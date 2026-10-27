@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: launchpad-controller
+  namespace: argocd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: launchpad-controller
+  template:
+    metadata:
+      labels:
+        app: launchpad-controller
+    spec:
+      serviceAccountName: launchpad-controller
+      containers:
+        - name: controller
+          image: launchpad-controller:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8090
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8090
+            initialDelaySeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8090
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: launchpad-controller
+  namespace: argocd
+spec:
+  selector:
+    app: launchpad-controller
+  ports:
+    - port: 8090
+      targetPort: 8090

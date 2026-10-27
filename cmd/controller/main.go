@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -194,15 +195,33 @@ func (c *controller) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
-func main() {
-	kubeconfig := os.Getenv("KUBECONFIG")
-	if kubeconfig == "" {
-		kubeconfig = os.Getenv("HOME") + "/.kube/config"
+// kubeConfig returns the in-cluster ServiceAccount credentials when running as
+// a pod, and falls back to a local kubeconfig when running on a workstation.
+func kubeConfig() (*rest.Config, error) {
+	cfg, err := rest.InClusterConfig()
+	if err == nil {
+		log.Printf("using in-cluster service account")
+		return cfg, nil
 	}
 
-	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	path := os.Getenv("KUBECONFIG")
+	if path == "" {
+		path = os.Getenv("HOME") + "/.kube/config"
+	}
+
+	cfg, err = clientcmd.BuildConfigFromFlags("", path)
 	if err != nil {
-		log.Fatalf("kubeconfig: %v", err)
+		return nil, fmt.Errorf("no in-cluster config and no kubeconfig at %s: %w", path, err)
+	}
+
+	log.Printf("using kubeconfig at %s", path)
+	return cfg, nil
+}
+
+func main() {
+	cfg, err := kubeConfig()
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	dyn, err := dynamic.NewForConfig(cfg)

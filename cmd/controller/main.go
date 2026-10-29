@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -27,6 +31,10 @@ var appSetGVR = schema.GroupVersionResource{
 const (
 	appSetNamespace = "argocd"
 	appSetName      = "previews"
+
+	// Reject bodies larger than this. A webhook payload is a few KB; anything
+	// larger is either a mistake or an attempt to exhaust memory.
+	maxBodyBytes = 1 << 20 // 1 MiB
 )
 
 type pullRequestEvent struct {
@@ -42,6 +50,33 @@ type pullRequestEvent struct {
 
 type controller struct {
 	client dynamic.Interface
+	secret []byte // shared secret for webhook signature verification
+}
+
+// verifySignature checks the GitHub HMAC-SHA256 signature over the raw body.
+//
+// GitHub computes HMAC-SHA256(secret, body) and sends it as
+// X-Hub-Signature-256: sha256=<hex>. Anyone who does not know the secret
+// cannot produce a valid signature for a body of their choosing.
+func (c *controller) verifySignature(header string, body []byte) bool {
+	const prefix = "sha256="
+	if len(header) <= len(prefix) || header[:len(prefix)] != prefix {
+		return false
+	}
+
+	sent, err := hex.DecodeString(header[len(prefix):])
+	if err != nil {
+		return false
+	}
+
+	mac := hmac.New(sha256.New, c.secret)
+	mac.Write(body)
+	expected := mac.Sum(nil)
+
+	// hmac.Equal is constant-time. A plain == would return as soon as two
+	// bytes differ, and the timing difference leaks the signature one byte
+	// at a time.
+	return hmac.Equal(sent, expected)
 }
 
 // readElements returns the current list of elements in the ApplicationSet's
@@ -164,14 +199,29 @@ func (c *controller) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The signature covers the raw bytes, so the body must be read in full
+	// before it is parsed.
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
+	if err != nil {
+		http.Error(w, "cannot read body", http.StatusBadRequest)
+		return
+	}
+
+	if len(c.secret) > 0 {
+		if !c.verifySignature(r.Header.Get("X-Hub-Signature-256"), body) {
+			log.Printf("rejected webhook from %s: bad signature", r.RemoteAddr)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
 	var event pullRequestEvent
-	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+	if err := json.Unmarshal(body, &event); err != nil {
 		http.Error(w, "bad payload", http.StatusBadRequest)
 		return
 	}
 
 	ctx := r.Context()
-	var err error
 
 	switch event.Action {
 	case "opened", "reopened", "synchronize":
@@ -180,6 +230,7 @@ func (c *controller) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		err = c.removePreview(ctx, event.Number)
 	default:
 		log.Printf("PR #%d: ignoring action %q", event.Number, event.Action)
+		err = nil
 	}
 
 	if err != nil {
@@ -229,7 +280,14 @@ func main() {
 		log.Fatalf("kubernetes client: %v", err)
 	}
 
-	c := &controller{client: dyn}
+	secret := []byte(os.Getenv("WEBHOOK_SECRET"))
+	if len(secret) == 0 {
+		log.Printf("WARNING: WEBHOOK_SECRET is not set, signature checks are disabled")
+	} else {
+		log.Printf("webhook signature verification enabled")
+	}
+
+	c := &controller{client: dyn, secret: secret}
 
 	port := os.Getenv("PORT")
 	if port == "" {

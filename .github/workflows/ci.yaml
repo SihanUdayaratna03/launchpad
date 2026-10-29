@@ -60,3 +60,14 @@ jobs:
       - name: Summary
         run: |
           echo "Pushed \`${{ env.IMAGE }}:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Bump image tag in config repo
+        run: |
+          git clone --depth 1 https://x-access-token:${{ secrets.CONFIG_REPO_TOKEN }}@github.com/SihanUdayaratna03/launchpad-config.git /tmp/config
+          cd /tmp/config
+          sed -i "s|^  tag: .*|  tag: ${{ github.sha }}|" charts/controller/values.yaml
+          if git diff --quiet; then echo "already up to date"; exit 0; fi
+          git config user.name "launchpad-ci"
+          git config user.email "ci@launchpad.local"
+          git commit -am "bump controller image to ${{ github.sha }}"
+          git push

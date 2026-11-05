@@ -303,4 +303,4 @@ boundaries, the quota enforcement, the signature check, the teardown guarantees,
 and a pipeline that moves a commit from a laptop into a cluster without anyone
 running a command.
 
-Building things is easy. Making sure they go away is engineering.
+

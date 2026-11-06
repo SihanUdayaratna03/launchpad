@@ -227,7 +227,7 @@ of mistake.
 | Infrastructure | Terraform |
 | Observability | Prometheus + Grafana |
 | Language | Go |
-
+| AWS | EC2 + VPC |
 ---
 
 ## Repository layout

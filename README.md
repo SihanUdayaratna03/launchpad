@@ -18,6 +18,8 @@ the diff, write "LGTM", and merge.
 
 Launchpad removes that cost.
 
+![Uploading image.png…]()
+
 ---
 
 ## Architecture

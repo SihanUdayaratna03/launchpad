@@ -18,7 +18,9 @@ the diff, write "LGTM", and merge.
 
 Launchpad removes that cost.
 
-![Uploading image.png…]()
+![Launchpad end-to-end workflow](docs/launchpad-workflow.png)
+
+*Target architecture. Implemented: webhook → ApplicationSet → preview → reaper cleanup. In progress: per-PR image build, preview URL and PR comment.*
 
 ---
 

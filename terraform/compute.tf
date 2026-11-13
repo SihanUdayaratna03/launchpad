@@ -19,6 +19,7 @@ resource "aws_instance" "k3s" {
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.node.id]
   key_name               = aws_key_pair.launchpad.key_name
+  ebs_optimized          = true
 
   user_data = templatefile("${path.module}/user-data.sh.tftpl", {
     config_repo    = var.config_repo

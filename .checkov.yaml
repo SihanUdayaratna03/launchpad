@@ -1,0 +1,8 @@
+framework:
+  - terraform
+skip-check:
+  - CKV_AWS_126  # detailed monitoring costs money; zero-cost design
+  - CKV_AWS_130  # single node has no NAT/EIP; it needs a public IP
+  - CKV_AWS_260  # port 80 open for GitHub webhooks and ingress; TLS is on the roadmap
+  - CKV2_AWS_11  # VPC flow logs cost money; zero-cost design
+  - CKV2_AWS_41  # node calls no AWS APIs, so no IAM role is needed

@@ -15,6 +15,17 @@ var previewMu sync.Mutex
 // Helm parameter and an image tag, so anything else is rejected up front.
 var commitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
+var domainPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`)
+
+// previewHost is where PR pr is served. An unset or malformed base domain
+// gives no host, which makes the chart skip the Ingress.
+func previewHost(base string, pr int) string {
+	if !domainPattern.MatchString(base) {
+		return ""
+	}
+	return fmt.Sprintf("pr-%d.%s", pr, base)
+}
+
 type change int
 
 const (
@@ -23,14 +34,14 @@ const (
 	updated
 )
 
-func element(pr int, sha string) map[string]interface{} {
-	return map[string]interface{}{"prNumber": fmt.Sprintf("%d", pr), "sha": sha}
+func element(pr int, sha, host string) map[string]interface{} {
+	return map[string]interface{}{"prNumber": fmt.Sprintf("%d", pr), "sha": sha, "host": host}
 }
 
-// upsertElement returns the list with PR pr at commit sha. It never mutates
-// its input. A PR already at this commit is reported as unchanged, so a
-// replayed webhook writes nothing.
-func upsertElement(elements []interface{}, pr int, sha string) ([]interface{}, change) {
+// upsertElement returns the list with PR pr at commit sha, served at host. It
+// never mutates its input. A PR already at this commit and host is reported as
+// unchanged, so a replayed webhook writes nothing.
+func upsertElement(elements []interface{}, pr int, sha, host string) ([]interface{}, change) {
 	want := fmt.Sprintf("%d", pr)
 
 	for i, e := range elements {
@@ -38,16 +49,16 @@ func upsertElement(elements []interface{}, pr int, sha string) ([]interface{}, c
 		if !ok || m["prNumber"] != want {
 			continue
 		}
-		if m["sha"] == sha {
+		if m["sha"] == sha && m["host"] == host {
 			return elements, unchanged
 		}
 		next := append([]interface{}(nil), elements...)
-		next[i] = element(pr, sha)
+		next[i] = element(pr, sha, host)
 		return next, updated
 	}
 
 	next := append([]interface{}(nil), elements...)
-	return append(next, element(pr, sha)), added
+	return append(next, element(pr, sha, host)), added
 }
 
 // removeElement returns the list without PR pr, and whether it was there.

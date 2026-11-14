@@ -11,12 +11,16 @@ const (
 	shaB = "88505c6a1b2c3d4e5f60718293a4b5c6d7e8f901"
 )
 
+const host12 = "pr-12.13-211-45-67.nip.io"
+
 func el(pr, sha string) interface{} {
-	return map[string]interface{}{"prNumber": pr, "sha": sha}
+	return map[string]interface{}{"prNumber": pr, "sha": sha, "host": "h" + pr}
 }
 
+func hostFor(pr string) string { return "h" + pr }
+
 func TestUpsertAddsNewPR(t *testing.T) {
-	got, res := upsertElement(nil, 12, shaA)
+	got, res := upsertElement(nil, 12, shaA, hostFor("12"))
 	if res != added {
 		t.Fatalf("result = %v, want added", res)
 	}
@@ -27,7 +31,7 @@ func TestUpsertAddsNewPR(t *testing.T) {
 
 func TestUpsertSameCommitIsUnchanged(t *testing.T) {
 	in := []interface{}{el("12", shaA)}
-	got, res := upsertElement(in, 12, shaA)
+	got, res := upsertElement(in, 12, shaA, hostFor("12"))
 	if res != unchanged {
 		t.Fatalf("result = %v, want unchanged", res)
 	}
@@ -38,7 +42,7 @@ func TestUpsertSameCommitIsUnchanged(t *testing.T) {
 
 func TestUpsertNewCommitUpdatesInPlace(t *testing.T) {
 	in := []interface{}{el("7", shaA), el("12", shaA), el("20", shaA)}
-	got, res := upsertElement(in, 12, shaB)
+	got, res := upsertElement(in, 12, shaB, hostFor("12"))
 	if res != updated {
 		t.Fatalf("result = %v, want updated", res)
 	}
@@ -50,8 +54,8 @@ func TestUpsertNewCommitUpdatesInPlace(t *testing.T) {
 
 func TestUpsertDoesNotMutateInput(t *testing.T) {
 	in := []interface{}{el("12", shaA)}
-	upsertElement(in, 12, shaB)
-	upsertElement(in, 99, shaB)
+	upsertElement(in, 12, shaB, hostFor("12"))
+	upsertElement(in, 99, shaB, hostFor("99"))
 	if want := []interface{}{el("12", shaA)}; !reflect.DeepEqual(in, want) {
 		t.Errorf("input was mutated: %v", in)
 	}
@@ -59,7 +63,7 @@ func TestUpsertDoesNotMutateInput(t *testing.T) {
 
 func TestUpsertKeepsOtherPRs(t *testing.T) {
 	in := []interface{}{el("7", shaA)}
-	got, _ := upsertElement(in, 12, shaB)
+	got, _ := upsertElement(in, 12, shaB, hostFor("12"))
 	if want := []interface{}{el("7", shaA), el("12", shaB)}; !reflect.DeepEqual(got, want) {
 		t.Errorf("elements = %v, want %v", got, want)
 	}
@@ -67,7 +71,7 @@ func TestUpsertKeepsOtherPRs(t *testing.T) {
 
 func TestUpsertIgnoresMalformedElements(t *testing.T) {
 	in := []interface{}{"junk", 42, nil, el("12", shaA)}
-	got, res := upsertElement(in, 12, shaB)
+	got, res := upsertElement(in, 12, shaB, hostFor("12"))
 	if res != updated || len(got) != 4 {
 		t.Fatalf("result = %v, len = %d", res, len(got))
 	}
@@ -78,7 +82,7 @@ func TestUpsertIgnoresMalformedElements(t *testing.T) {
 
 func TestPrNumberMustMatchExactly(t *testing.T) {
 	in := []interface{}{el("12", shaA)}
-	got, res := upsertElement(in, 1, shaB)
+	got, res := upsertElement(in, 1, shaB, hostFor("1"))
 	if res != added || len(got) != 2 {
 		t.Errorf("PR 1 must not match PR 12: result = %v, len = %d", res, len(got))
 	}
@@ -127,6 +131,53 @@ func TestCommitPattern(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := commitPattern.MatchString(tt.sha); got != tt.want {
 				t.Errorf("MatchString(%q) = %v, want %v", tt.sha, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUpsertCarriesHost(t *testing.T) {
+	got, _ := upsertElement(nil, 12, shaA, host12)
+	m := got[0].(map[string]interface{})
+	if m["host"] != host12 {
+		t.Errorf("host = %v, want %v", m["host"], host12)
+	}
+}
+
+func TestUpsertNewHostSameCommitUpdates(t *testing.T) {
+	in := []interface{}{map[string]interface{}{"prNumber": "12", "sha": shaA, "host": "old"}}
+	got, res := upsertElement(in, 12, shaA, host12)
+	if res != updated {
+		t.Fatalf("result = %v, want updated", res)
+	}
+	if got[0].(map[string]interface{})["host"] != host12 {
+		t.Errorf("host not updated: %v", got[0])
+	}
+}
+
+func TestUpsertLegacyElementWithoutHostUpdates(t *testing.T) {
+	in := []interface{}{map[string]interface{}{"prNumber": "12", "sha": shaA}}
+	_, res := upsertElement(in, 12, shaA, "")
+	if res != updated {
+		t.Errorf("result = %v, want updated so old elements gain a host key", res)
+	}
+}
+
+func TestPreviewHost(t *testing.T) {
+	tests := []struct {
+		name, base string
+		pr         int
+		want       string
+	}{
+		{"normal", "13-211-45-67.nip.io", 12, "pr-12.13-211-45-67.nip.io"},
+		{"no base domain", "", 12, ""},
+		{"invalid base domain", "evil.com/x", 12, ""},
+		{"uppercase rejected", "A.nip.io", 12, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := previewHost(tt.base, tt.pr); got != tt.want {
+				t.Errorf("previewHost(%q, %d) = %q, want %q", tt.base, tt.pr, got, tt.want)
 			}
 		})
 	}

@@ -71,3 +71,42 @@ jobs:
           git config user.email "ci@launchpad.local"
           git commit -am "bump controller image to ${{ github.sha }}"
           git push
+
+  demo:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+    env:
+      DEMO_IMAGE: sihanudayaratna/launchpad-demo
+      COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.COMMIT }}
+
+      - name: Build demo image
+        run: docker build -f demo/Dockerfile --build-arg COMMIT=${{ env.COMMIT }} -t ${{ env.DEMO_IMAGE }}:${{ env.COMMIT }} .
+
+      - name: Scan demo image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DEMO_IMAGE }}:${{ env.COMMIT }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push demo image
+        run: docker push ${{ env.DEMO_IMAGE }}:${{ env.COMMIT }}
+
+      - name: Summary
+        run: |
+          echo "Pushed \`${{ env.DEMO_IMAGE }}:${{ env.COMMIT }}\`" >> $GITHUB_STEP_SUMMARY

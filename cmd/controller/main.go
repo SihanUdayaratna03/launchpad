@@ -138,48 +138,46 @@ func (c *controller) writeElements(ctx context.Context, elements []interface{}) 
 	return err
 }
 
-// addPreview is idempotent: replaying the same webhook does not duplicate.
-func (c *controller) addPreview(ctx context.Context, pr int) error {
+// addPreview is idempotent: replaying the same webhook writes nothing. A new
+// commit on an existing PR changes the element's sha, which makes Argo CD roll
+// the preview onto the image built for that commit.
+func (c *controller) addPreview(ctx context.Context, pr int, sha string) error {
+	previewMu.Lock()
+	defer previewMu.Unlock()
+
 	elements, err := c.readElements(ctx)
 	if err != nil {
 		return err
 	}
 
-	want := fmt.Sprintf("%d", pr)
-	for _, e := range elements {
-		if m, ok := e.(map[string]interface{}); ok && m["prNumber"] == want {
-			log.Printf("PR #%d: preview already exists", pr)
-			return nil
-		}
+	next, result := upsertElement(elements, pr, sha)
+	if result == unchanged {
+		log.Printf("PR #%d: preview already at %s", pr, sha[:7])
+		return nil
 	}
 
-	elements = append(elements, map[string]interface{}{"prNumber": want})
-	if err := c.writeElements(ctx, elements); err != nil {
+	if err := c.writeElements(ctx, next); err != nil {
 		return err
 	}
 
-	log.Printf("PR #%d: preview created", pr)
+	if result == added {
+		log.Printf("PR #%d: preview created at %s", pr, sha[:7])
+	} else {
+		log.Printf("PR #%d: preview updated to %s", pr, sha[:7])
+	}
 	return nil
 }
 
 func (c *controller) removePreview(ctx context.Context, pr int) error {
+	previewMu.Lock()
+	defer previewMu.Unlock()
+
 	elements, err := c.readElements(ctx)
 	if err != nil {
 		return err
 	}
 
-	want := fmt.Sprintf("%d", pr)
-	kept := make([]interface{}, 0, len(elements))
-	removed := false
-
-	for _, e := range elements {
-		if m, ok := e.(map[string]interface{}); ok && m["prNumber"] == want {
-			removed = true
-			continue
-		}
-		kept = append(kept, e)
-	}
-
+	kept, removed := removeElement(elements, pr)
 	if !removed {
 		log.Printf("PR #%d: no preview to remove", pr)
 		return nil
@@ -225,7 +223,13 @@ func (c *controller) handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	switch event.Action {
 	case "opened", "reopened", "synchronize":
-		err = c.addPreview(ctx, event.Number)
+		sha := event.PullRequest.Head.SHA
+		if !commitPattern.MatchString(sha) {
+			log.Printf("PR #%d: rejecting %q event with invalid head sha", event.Number, event.Action)
+			http.Error(w, "bad commit sha", http.StatusBadRequest)
+			return
+		}
+		err = c.addPreview(ctx, event.Number, sha)
 	case "closed":
 		err = c.removePreview(ctx, event.Number)
 	default:

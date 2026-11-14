@@ -19,6 +19,9 @@ kubectl apply --server-side -n argocd \
   -f https://raw.githubusercontent.com/argoproj/argo-cd/${argocd_version}/manifests/install.yaml
 kubectl -n argocd rollout status deploy/argocd-server --timeout=300s
 
+kubectl -n argocd create configmap launchpad-env \
+  --from-literal=base-domain="$(echo "$PUBLIC_IP" | tr . -).nip.io"
+
 kubectl apply -f https://raw.githubusercontent.com/${config_repo}/main/bootstrap/root-app.yaml
 
 echo "bootstrap complete"

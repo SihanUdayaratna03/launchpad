@@ -38,8 +38,11 @@ const (
 )
 
 type pullRequestEvent struct {
-	Action      string `json:"action"`
-	Number      int    `json:"number"`
+	Action     string `json:"action"`
+	Number     int    `json:"number"`
+	Repository struct {
+		FullName string `json:"full_name"`
+	} `json:"repository"`
 	PullRequest struct {
 		Title string `json:"title"`
 		Head  struct {
@@ -51,6 +54,9 @@ type pullRequestEvent struct {
 type controller struct {
 	client dynamic.Interface
 	secret []byte // shared secret for webhook signature verification
+
+	baseDomain string     // e.g. 13-211-45-67.nip.io; empty disables preview URLs
+	comments   *commenter // nil disables PR comments
 }
 
 // verifySignature checks the GitHub HMAC-SHA256 signature over the raw body.
@@ -141,23 +147,23 @@ func (c *controller) writeElements(ctx context.Context, elements []interface{}) 
 // addPreview is idempotent: replaying the same webhook writes nothing. A new
 // commit on an existing PR changes the element's sha, which makes Argo CD roll
 // the preview onto the image built for that commit.
-func (c *controller) addPreview(ctx context.Context, pr int, sha string) error {
+func (c *controller) addPreview(ctx context.Context, pr int, sha string) (change, error) {
 	previewMu.Lock()
 	defer previewMu.Unlock()
 
 	elements, err := c.readElements(ctx)
 	if err != nil {
-		return err
+		return unchanged, err
 	}
 
-	next, result := upsertElement(elements, pr, sha)
+	next, result := upsertElement(elements, pr, sha, previewHost(c.baseDomain, pr))
 	if result == unchanged {
 		log.Printf("PR #%d: preview already at %s", pr, sha[:7])
-		return nil
+		return unchanged, nil
 	}
 
 	if err := c.writeElements(ctx, next); err != nil {
-		return err
+		return unchanged, err
 	}
 
 	if result == added {
@@ -165,7 +171,19 @@ func (c *controller) addPreview(ctx context.Context, pr int, sha string) error {
 	} else {
 		log.Printf("PR #%d: preview updated to %s", pr, sha[:7])
 	}
-	return nil
+	return result, nil
+}
+
+// announce keeps the PR comment in step with the preview. A GitHub failure is
+// logged and never fails the webhook: the preview itself already exists, and a
+// retry would only repeat work.
+func (c *controller) announce(ctx context.Context, repo string, pr int, body string, create bool) {
+	if c.comments == nil {
+		return
+	}
+	if err := c.comments.upsert(ctx, repo, pr, body, create); err != nil {
+		log.Printf("PR #%d: comment failed: %v", pr, err)
+	}
 }
 
 func (c *controller) removePreview(ctx context.Context, pr int) error {
@@ -229,9 +247,20 @@ func (c *controller) handleWebhook(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad commit sha", http.StatusBadRequest)
 			return
 		}
-		err = c.addPreview(ctx, event.Number, sha)
+		var result change
+		result, err = c.addPreview(ctx, event.Number, sha)
+		if err == nil && result != unchanged {
+			body := deployingBody(sha)
+			if host := previewHost(c.baseDomain, event.Number); host != "" {
+				body = readyBody(host, sha)
+			}
+			c.announce(ctx, event.Repository.FullName, event.Number, body, true)
+		}
 	case "closed":
 		err = c.removePreview(ctx, event.Number)
+		if err == nil {
+			c.announce(ctx, event.Repository.FullName, event.Number, removedBody(), false)
+		}
 	default:
 		log.Printf("PR #%d: ignoring action %q", event.Number, event.Action)
 		err = nil
@@ -291,7 +320,18 @@ func main() {
 		log.Printf("webhook signature verification enabled")
 	}
 
-	c := &controller{client: dyn, secret: secret}
+	c := &controller{
+		client:     dyn,
+		secret:     secret,
+		baseDomain: os.Getenv("BASE_DOMAIN"),
+		comments:   newCommenter(os.Getenv("GITHUB_TOKEN")),
+	}
+	if c.baseDomain == "" {
+		log.Printf("BASE_DOMAIN is not set, previews get no URL")
+	}
+	if c.comments == nil {
+		log.Printf("GITHUB_TOKEN is not set, PR comments are disabled")
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -302,7 +342,6 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 	http.HandleFunc("/webhook", c.handleWebhook)
-
 	log.Printf("launchpad-controller listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

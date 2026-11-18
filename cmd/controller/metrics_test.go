@@ -97,7 +97,7 @@ func TestMetricsHandlerContentType(t *testing.T) {
 	}
 }
 
-func sign(secret, body string) string {
+func signBody(secret, body string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(body))
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
@@ -116,11 +116,11 @@ func TestWebhookResultsAreClassified(t *testing.T) {
 	}{
 		{"wrong method", http.MethodGet, "", "", "bad_request", http.StatusMethodNotAllowed},
 		{"bad signature", http.MethodPost, `{}`, "sha256=00", "unauthorized", http.StatusUnauthorized},
-		{"bad payload", http.MethodPost, `not json`, sign(secret, `not json`), "bad_request", http.StatusBadRequest},
+		{"bad payload", http.MethodPost, `not json`, signBody(secret, `not json`), "bad_request", http.StatusBadRequest},
 		{"invalid sha", http.MethodPost, `{"action":"opened","number":1,"pull_request":{"head":{"sha":"zzz"}}}`,
-			sign(secret, `{"action":"opened","number":1,"pull_request":{"head":{"sha":"zzz"}}}`), "bad_request", http.StatusBadRequest},
+			signBody(secret, `{"action":"opened","number":1,"pull_request":{"head":{"sha":"zzz"}}}`), "bad_request", http.StatusBadRequest},
 		{"ignored action", http.MethodPost, `{"action":"labeled","number":1}`,
-			sign(secret, `{"action":"labeled","number":1}`), "ignored", http.StatusAccepted},
+			signBody(secret, `{"action":"labeled","number":1}`), "ignored", http.StatusAccepted},
 	}
 
 	for _, tt := range tests {

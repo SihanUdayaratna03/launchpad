@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -57,6 +58,7 @@ type controller struct {
 
 	baseDomain string     // e.g. 13-211-45-67.nip.io; empty disables preview URLs
 	comments   *commenter // nil disables PR comments
+	metrics    *metrics   // nil records nothing
 }
 
 // verifySignature checks the GitHub HMAC-SHA256 signature over the raw body.
@@ -168,8 +170,10 @@ func (c *controller) addPreview(ctx context.Context, pr int, sha string) (change
 
 	if result == added {
 		log.Printf("PR #%d: preview created at %s", pr, sha[:7])
+		c.metrics.event("created")
 	} else {
 		log.Printf("PR #%d: preview updated to %s", pr, sha[:7])
+		c.metrics.event("updated")
 	}
 	return result, nil
 }
@@ -183,6 +187,7 @@ func (c *controller) announce(ctx context.Context, repo string, pr int, body str
 	}
 	if err := c.comments.upsert(ctx, repo, pr, body, create); err != nil {
 		log.Printf("PR #%d: comment failed: %v", pr, err)
+		c.metrics.commentFailed()
 	}
 }
 
@@ -206,11 +211,17 @@ func (c *controller) removePreview(ctx context.Context, pr int) error {
 	}
 
 	log.Printf("PR #%d: preview destroyed", pr)
+	c.metrics.event("destroyed")
 	return nil
 }
 
 func (c *controller) handleWebhook(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	result := "accepted"
+	defer func() { c.metrics.webhook(result, time.Since(start)) }()
+
 	if r.Method != http.MethodPost {
+		result = "bad_request"
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -219,6 +230,7 @@ func (c *controller) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	// before it is parsed.
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
+		result = "bad_request"
 		http.Error(w, "cannot read body", http.StatusBadRequest)
 		return
 	}
@@ -226,6 +238,7 @@ func (c *controller) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	if len(c.secret) > 0 {
 		if !c.verifySignature(r.Header.Get("X-Hub-Signature-256"), body) {
 			log.Printf("rejected webhook from %s: bad signature", r.RemoteAddr)
+			result = "unauthorized"
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -233,6 +246,7 @@ func (c *controller) handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	var event pullRequestEvent
 	if err := json.Unmarshal(body, &event); err != nil {
+		result = "bad_request"
 		http.Error(w, "bad payload", http.StatusBadRequest)
 		return
 	}
@@ -244,6 +258,7 @@ func (c *controller) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		sha := event.PullRequest.Head.SHA
 		if !commitPattern.MatchString(sha) {
 			log.Printf("PR #%d: rejecting %q event with invalid head sha", event.Number, event.Action)
+			result = "bad_request"
 			http.Error(w, "bad commit sha", http.StatusBadRequest)
 			return
 		}
@@ -263,10 +278,12 @@ func (c *controller) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 	default:
 		log.Printf("PR #%d: ignoring action %q", event.Number, event.Action)
+		result = "ignored"
 		err = nil
 	}
 
 	if err != nil {
+		result = "error"
 		if errors.IsNotFound(err) {
 			log.Printf("ApplicationSet %q not found in namespace %q", appSetName, appSetNamespace)
 		} else {
@@ -325,6 +342,7 @@ func main() {
 		secret:     secret,
 		baseDomain: os.Getenv("BASE_DOMAIN"),
 		comments:   newCommenter(os.Getenv("GITHUB_TOKEN")),
+		metrics:    newMetrics(),
 	}
 	if c.baseDomain == "" {
 		log.Printf("BASE_DOMAIN is not set, previews get no URL")
@@ -342,6 +360,7 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 	http.HandleFunc("/webhook", c.handleWebhook)
+	http.HandleFunc("/metrics", c.metrics.handler)
 	log.Printf("launchpad-controller listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

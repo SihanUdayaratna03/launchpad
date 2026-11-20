@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 470" width="1180" height="470" role="img" aria-label="One controller, two backends">
+<defs><marker id="ar-f97316" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f97316"/></marker><marker id="ar-94a3b8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker><marker id="ar-06b6d4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#06b6d4"/></marker><marker id="ar-6366f1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6366f1"/></marker><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.10"/></filter></defs>
+<rect width="1180" height="470" rx="16" fill="#ffffff"/>
+<rect x="300" y="40" width="862" height="190" rx="16" fill="#f97316" opacity="0.05"/>
+<rect x="300" y="248" width="862" height="190" rx="16" fill="#06b6d4" opacity="0.06"/>
+<text x="1150" y="64" text-anchor="end" font-size="12.5" font-weight="700" letter-spacing="0.6" fill="#f97316" font-family="system-ui,sans-serif">THE AWS INSTALL</text>
+<text x="1150" y="272" text-anchor="end" font-size="12.5" font-weight="700" letter-spacing="0.6" fill="#06b6d4" font-family="system-ui,sans-serif">THE OPENCHOREO BACKEND</text>
+<rect x="14" y="196" width="126" height="86" rx="14" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2" filter="url(#sh)"/>
+<text x="77" y="245" text-anchor="middle" font-size="17" font-weight="650" fill="#0f172a" font-family="system-ui,-apple-system,Segoe UI,sans-serif">Pull request</text>
+<rect x="170" y="177" width="150" height="124" rx="14" fill="#eef2ff" stroke="#6366f1" stroke-width="2" filter="url(#sh)"/>
+<text x="245" y="207" text-anchor="middle" font-size="17" font-weight="650" fill="#312e81" font-family="system-ui,-apple-system,Segoe UI,sans-serif">controller</text>
+<text x="245" y="231" text-anchor="middle" font-size="13.5" fill="#312e81" font-family="system-ui,-apple-system,Segoe UI,sans-serif">verify HMAC</text>
+<text x="245" y="250" text-anchor="middle" font-size="13.5" fill="#312e81" font-family="system-ui,-apple-system,Segoe UI,sans-serif">decide</text>
+<text x="245" y="269" text-anchor="middle" font-size="13.5" fill="#312e81" font-family="system-ui,-apple-system,Segoe UI,sans-serif">write</text>
+<line x1="144" y1="239" x2="166" y2="239" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#ar-94a3b8)"/>
+<line x1="322" y1="220" x2="392" y2="150" stroke="#f97316" stroke-width="2.5" marker-end="url(#ar-f97316)"/>
+<rect x="387" y="145" width="122" height="23" rx="11" fill="#ffffff" stroke="#f97316" stroke-width="1.5"/>
+<text x="448" y="161" text-anchor="middle" font-size="12.5" font-weight="600" fill="#f97316" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">BACKEND=argocd</text>
+<rect x="530" y="72" width="180" height="126" rx="14" fill="#fff7ed" stroke="#f97316" stroke-width="2" filter="url(#sh)"/>
+<rect x="544" y="84" width="23" height="20" rx="10" fill="#f97316" opacity="0.18"/>
+<text x="552" y="98" font-size="12" font-weight="600" fill="#f97316" font-family="system-ui,-apple-system,Segoe UI,sans-serif">1</text>
+<text x="620" y="128" text-anchor="middle" font-size="17" font-weight="650" fill="#7c2d12" font-family="system-ui,-apple-system,Segoe UI,sans-serif">ApplicationSet</text>
+<text x="620" y="152" text-anchor="middle" font-size="13.5" fill="#7c2d12" font-family="system-ui,-apple-system,Segoe UI,sans-serif">one element per PR</text>
+<rect x="760" y="72" width="150" height="126" rx="14" fill="#fff7ed" stroke="#f97316" stroke-width="2" filter="url(#sh)"/>
+<rect x="774" y="84" width="23" height="20" rx="10" fill="#f97316" opacity="0.18"/>
+<text x="782" y="98" font-size="12" font-weight="600" fill="#f97316" font-family="system-ui,-apple-system,Segoe UI,sans-serif">2</text>
+<text x="835" y="128" text-anchor="middle" font-size="17" font-weight="650" fill="#7c2d12" font-family="system-ui,-apple-system,Segoe UI,sans-serif">Argo CD</text>
+<text x="835" y="152" text-anchor="middle" font-size="13.5" fill="#7c2d12" font-family="system-ui,-apple-system,Segoe UI,sans-serif">reconciles</text>
+<rect x="958" y="72" width="192" height="126" rx="14" fill="#f0fdf4" stroke="#22c55e" stroke-width="2" filter="url(#sh)"/>
+<rect x="972" y="84" width="23" height="20" rx="10" fill="#22c55e" opacity="0.18"/>
+<text x="980" y="98" font-size="12" font-weight="600" fill="#22c55e" font-family="system-ui,-apple-system,Segoe UI,sans-serif">3</text>
+<text x="1054" y="128" text-anchor="middle" font-size="17" font-weight="650" fill="#14532d" font-family="system-ui,-apple-system,Segoe UI,sans-serif">preview-pr-N</text>
+<text x="1054" y="152" text-anchor="middle" font-size="13.5" fill="#14532d" font-family="system-ui,-apple-system,Segoe UI,sans-serif">namespace · quota</text>
+<text x="1054" y="171" text-anchor="middle" font-size="13.5" fill="#14532d" font-family="system-ui,-apple-system,Segoe UI,sans-serif">pod · Ingress</text>
+<line x1="714" y1="135" x2="756" y2="135" stroke="#f97316" stroke-width="2.5" marker-end="url(#ar-f97316)"/>
+<line x1="914" y1="135" x2="954" y2="135" stroke="#f97316" stroke-width="2.5" marker-end="url(#ar-f97316)"/>
+<line x1="322" y1="258" x2="392" y2="328" stroke="#06b6d4" stroke-width="2.5" marker-end="url(#ar-06b6d4)"/>
+<rect x="364" y="325" width="151" height="23" rx="11" fill="#ffffff" stroke="#06b6d4" stroke-width="1.5"/>
+<text x="440" y="341" text-anchor="middle" font-size="12.5" font-weight="600" fill="#06b6d4" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">BACKEND=openchoreo</text>
+<rect x="530" y="280" width="180" height="126" rx="14" fill="#ecfeff" stroke="#06b6d4" stroke-width="2" filter="url(#sh)"/>
+<rect x="544" y="292" width="23" height="20" rx="10" fill="#06b6d4" opacity="0.18"/>
+<text x="552" y="306" font-size="12" font-weight="600" fill="#06b6d4" font-family="system-ui,-apple-system,Segoe UI,sans-serif">1</text>
+<text x="620" y="336" text-anchor="middle" font-size="17" font-weight="650" fill="#155e75" font-family="system-ui,-apple-system,Segoe UI,sans-serif">Project pr-N</text>
+<text x="620" y="360" text-anchor="middle" font-size="13.5" fill="#155e75" font-family="system-ui,-apple-system,Segoe UI,sans-serif">Component</text>
+<text x="620" y="379" text-anchor="middle" font-size="13.5" fill="#155e75" font-family="system-ui,-apple-system,Segoe UI,sans-serif">Workload :commit</text>
+<rect x="760" y="280" width="150" height="126" rx="14" fill="#ecfeff" stroke="#06b6d4" stroke-width="2" filter="url(#sh)"/>
+<rect x="774" y="292" width="23" height="20" rx="10" fill="#06b6d4" opacity="0.18"/>
+<text x="782" y="306" font-size="12" font-weight="600" fill="#06b6d4" font-family="system-ui,-apple-system,Segoe UI,sans-serif">2</text>
+<text x="835" y="336" text-anchor="middle" font-size="17" font-weight="650" fill="#155e75" font-family="system-ui,-apple-system,Segoe UI,sans-serif">OpenChoreo</text>
+<text x="835" y="360" text-anchor="middle" font-size="13.5" fill="#155e75" font-family="system-ui,-apple-system,Segoe UI,sans-serif">control plane</text>
+<rect x="958" y="280" width="192" height="126" rx="14" fill="#f0fdf4" stroke="#22c55e" stroke-width="2" filter="url(#sh)"/>
+<rect x="972" y="292" width="23" height="20" rx="10" fill="#22c55e" opacity="0.18"/>
+<text x="980" y="306" font-size="12" font-weight="600" fill="#22c55e" font-family="system-ui,-apple-system,Segoe UI,sans-serif">3</text>
+<text x="1054" y="336" text-anchor="middle" font-size="17" font-weight="650" fill="#14532d" font-family="system-ui,-apple-system,Segoe UI,sans-serif">one namespace</text>
+<text x="1054" y="360" text-anchor="middle" font-size="13.5" fill="#14532d" font-family="system-ui,-apple-system,Segoe UI,sans-serif">per Project</text>
+<text x="1054" y="379" text-anchor="middle" font-size="13.5" fill="#14532d" font-family="system-ui,-apple-system,Segoe UI,sans-serif">Deployment · HTTPRoute</text>
+<line x1="714" y1="343" x2="756" y2="343" stroke="#06b6d4" stroke-width="2.5" marker-end="url(#ar-06b6d4)"/>
+<line x1="914" y1="343" x2="954" y2="343" stroke="#06b6d4" stroke-width="2.5" marker-end="url(#ar-06b6d4)"/>
+<text x="18" y="458" font-size="13.5" fill="#475569" font-family="system-ui,-apple-system,Segoe UI,sans-serif">Same webhook, same signature check, same PR comment, same metrics. Only the last write differs.</text>
+</svg>

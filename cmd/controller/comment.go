@@ -48,6 +48,13 @@ func readyBody(host, sha string) string {
 		commentMarker, host, shortSHA(sha))
 }
 
+// readyURLBody is readyBody for a backend that already knows the full URL,
+// path included.
+func readyURLBody(url, sha string) string {
+	return fmt.Sprintf("%s\n🚀 **Preview ready:** %s\n\nCommit `%s`. It updates on every push and is destroyed when this pull request closes.",
+		commentMarker, url, shortSHA(sha))
+}
+
 func deployingBody(sha string) string {
 	return fmt.Sprintf("%s\n🚧 **Preview deploying** for commit `%s`.", commentMarker, shortSHA(sha))
 }

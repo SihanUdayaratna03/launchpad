@@ -1,0 +1,34 @@
+# The Launchpad demo workload, deployed on OpenChoreo (v1.3.3) as a Component.
+# Apply with:  kubectl apply -f deploy/openchoreo/launchpad-demo.yaml
+# See docs/openchoreo.md for the full install and verification steps.
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: launchpad-demo
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  componentType:
+    kind: ClusterComponentType
+    name: deployment/service
+  autoDeploy: true
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: launchpad-demo-workload
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: launchpad-demo
+  container:
+    # Any tag that exists on Docker Hub works; this is the commit the demo was built from.
+    image: sihanudayaratna/launchpad-demo:35591a177caeeba184436994750dfc71de281258
+  endpoints:
+    http:
+      type: HTTP
+      port: 8080
+      visibility:
+        - external

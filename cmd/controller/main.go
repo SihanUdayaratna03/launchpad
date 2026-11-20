@@ -59,6 +59,8 @@ type controller struct {
 	baseDomain string     // e.g. 13-211-45-67.nip.io; empty disables preview URLs
 	comments   *commenter // nil disables PR comments
 	metrics    *metrics   // nil records nothing
+
+	oc *openchoreo // non-nil when BACKEND=openchoreo; nil means the Argo CD backend
 }
 
 // verifySignature checks the GitHub HMAC-SHA256 signature over the raw body.
@@ -150,6 +152,10 @@ func (c *controller) writeElements(ctx context.Context, elements []interface{}) 
 // commit on an existing PR changes the element's sha, which makes Argo CD roll
 // the preview onto the image built for that commit.
 func (c *controller) addPreview(ctx context.Context, pr int, sha string) (change, error) {
+	if c.oc != nil {
+		return c.addOpenChoreo(ctx, pr, sha)
+	}
+
 	previewMu.Lock()
 	defer previewMu.Unlock()
 
@@ -192,6 +198,10 @@ func (c *controller) announce(ctx context.Context, repo string, pr int, body str
 }
 
 func (c *controller) removePreview(ctx context.Context, pr int) error {
+	if c.oc != nil {
+		return c.removeOpenChoreo(ctx, pr)
+	}
+
 	previewMu.Lock()
 	defer previewMu.Unlock()
 
@@ -266,7 +276,9 @@ func (c *controller) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		result, err = c.addPreview(ctx, event.Number, sha)
 		if err == nil && result != unchanged {
 			body := deployingBody(sha)
-			if host := previewHost(c.baseDomain, event.Number); host != "" {
+			if c.oc != nil {
+				body = readyURLBody(c.oc.url(event.Number), sha)
+			} else if host := previewHost(c.baseDomain, event.Number); host != "" {
 				body = readyBody(host, sha)
 			}
 			c.announce(ctx, event.Repository.FullName, event.Number, body, true)
@@ -284,7 +296,7 @@ func (c *controller) handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		result = "error"
-		if errors.IsNotFound(err) {
+		if c.oc == nil && errors.IsNotFound(err) {
 			log.Printf("ApplicationSet %q not found in namespace %q", appSetName, appSetNamespace)
 		} else {
 			log.Printf("PR #%d: %v", event.Number, err)
@@ -319,6 +331,13 @@ func kubeConfig() (*rest.Config, error) {
 	return cfg, nil
 }
 
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
 func main() {
 	cfg, err := kubeConfig()
 	if err != nil {
@@ -344,8 +363,25 @@ func main() {
 		comments:   newCommenter(os.Getenv("GITHUB_TOKEN")),
 		metrics:    newMetrics(),
 	}
-	if c.baseDomain == "" {
-		log.Printf("BASE_DOMAIN is not set, previews get no URL")
+
+	switch backend := os.Getenv("BACKEND"); backend {
+	case "", "argocd":
+		log.Printf("backend: argocd (ApplicationSet %s/%s)", appSetNamespace, appSetName)
+		if c.baseDomain == "" {
+			log.Printf("BASE_DOMAIN is not set, previews get no URL")
+		}
+	case "openchoreo":
+		c.oc, err = newOpenchoreo(dynStore{dyn},
+			envOr("OC_NAMESPACE", "default"),
+			envOr("OC_ENVIRONMENT", "development"),
+			envOr("OC_IMAGE", "sihanudayaratna/launchpad-demo"),
+			envOr("OC_HOST", "development-default.openchoreoapis.localhost:19080"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("backend: openchoreo (namespace %s, environment %s, image %s)", c.oc.namespace, c.oc.environment, c.oc.image)
+	default:
+		log.Fatalf("unknown BACKEND %q (want argocd or openchoreo)", backend)
 	}
 	if c.comments == nil {
 		log.Printf("GITHUB_TOKEN is not set, PR comments are disabled")

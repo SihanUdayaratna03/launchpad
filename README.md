@@ -345,6 +345,56 @@ locally on k3d first, before spending AWS time, is how it was caught.
 
 ---
 
+## Launchpad and OpenChoreo
+
+To see how a full internal developer platform approaches the same problem, I ran
+[OpenChoreo](https://openchoreo.dev) (WSO2's open-source IDP, v1.3.3) on a local k3d
+cluster and deployed this project's demo image as a Component. This is a comparison
+of two designs, not a benchmark, and I only compared what I actually ran.
+
+The demo image, deployed by OpenChoreo and served through its gateway:
+
+![Demo served by OpenChoreo](docs/openchoreo-preview.png)
+
+*The page still says "PR #?" and "unknown" because the demo reads the PR number and
+namespace from environment variables that Launchpad's chart sets and my OpenChoreo
+Workload does not. The "destroyed when the pull request closes" footer is the demo's
+own text; nothing here is tied to a pull request.*
+
+The Component in the OpenChoreo console:
+
+![Component in the OpenChoreo console](docs/openchoreo-console.png)
+
+Deploying it took one `kubectl apply` of two objects (a `Component` and a `Workload`).
+OpenChoreo then created the Deployment, Service and HTTPRoute by itself.
+
+| | Launchpad | OpenChoreo (what I ran) |
+|---|---|---|
+| What describes a deployment | One ApplicationSet element (`prNumber`, image tag) | A `Component` and a `Workload` |
+| Template that renders it | `charts/preview` (Deployment, Service, Ingress, quota, NetworkPolicy) | `ClusterComponentType` `deployment/service` |
+| Unit of environment | One namespace per pull request, `preview-pr-N` | Fixed `Environment`s (development, staging, production) with a `DeploymentPipeline` |
+| Where workloads run | Same cluster | A data plane registered with the control plane (namespace `dp-default-default-development-...`) |
+| Routing | Traefik Ingress, `pr-N.<ip>.nip.io` | Gateway API `HTTPRoute`, host `development-default.openchoreoapis.localhost`, path `/launchpad-demo-http` |
+| Lifecycle | Created on PR open, destroyed on close, TTL reaper | Long-lived Component promoted through environments |
+
+What I took from it:
+
+- **Different units.** Launchpad's unit is a short-lived environment per pull request.
+  OpenChoreo's unit is a long-lived component moved through a fixed set of
+  environments. They answer different questions.
+- **OpenChoreo gives more out of the box**: a console, a catalog, ownership, a project
+  model and an install that wires up a gateway, certificates and a secret store.
+  Launchpad is smaller and more explicit about every moving part.
+- **Not covered here.** I did not test how OpenChoreo cleans up, how it isolates
+  workloads from each other, or its build and observability planes (both optional, and
+  not installed). I make no claim about them.
+
+The install follows the official
+[Run Locally on K3d](https://openchoreo.dev/docs/getting-started/try-it-out/on-k3d-locally/)
+guide, control plane and data plane only.
+
+---
+
 ## Stack
 
 | Layer | Tool |

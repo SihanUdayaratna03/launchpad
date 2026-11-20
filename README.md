@@ -439,7 +439,14 @@ nothing. Argo CD stays the default and the AWS install is untouched.
 
 The controller's permissions in this mode are a namespaced `Role`: `get`, `create`, `patch` and
 `delete` on `projects`, `projectreleasebindings`, `components` and `workloads`. No `list`, no
-`watch`, nothing cluster-wide, no access to secrets.
+`watch`, nothing cluster-wide, no access to secrets. The reaper, in this mode, needs `list`
+and `delete` on `projects` and nothing else.
+
+The TTL reaper has an `openchoreo` mode as well. Instead of walking the preview namespaces it
+lists the `pr-N` Projects and deletes the ones past their TTL or whose pull request has
+closed, which is what catches a preview whose close webhook never arrived. It only ever
+touches names matching `pr-<number>`, so OpenChoreo's own Projects are left alone, and
+`DRY_RUN` still defaults to on.
 
 #### What the end-to-end test proves
 
@@ -477,7 +484,8 @@ the Project and the namespace underneath it.
 - Tested on a local k3d cluster, not on the AWS install.
 - The PR comment carries the gateway URL. That body is unit-tested, but the end-to-end test runs
   without a GitHub token, so I have not watched a real comment appear in this mode.
-- The TTL reaper still only knows about the Argo CD backend.
+- The reaper's OpenChoreo mode is unit-tested, but I have not yet run it on a schedule
+  against a live cluster.
 - The Component is the demo app. Other workloads mean parameterising the builders in
   `cmd/controller/openchoreo.go`.
 

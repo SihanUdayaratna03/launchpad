@@ -348,9 +348,10 @@ locally on k3d first, before spending AWS time, is how it was caught.
 ## Running on OpenChoreo
 
 [OpenChoreo](https://openchoreo.dev) is the open-source internal developer platform from
-Choreo Labs (formerly WSO2), a CNCF Sandbox project. I ran it on my own laptop and deployed
-this project's demo workload on it as a Component, to see how a full platform approaches
-the same problem Launchpad solves with a few small pieces.
+Choreo Labs (formerly WSO2), a CNCF Sandbox project. I ran it on my own laptop, deployed this
+project's demo workload on it as a Component, and then taught Launchpad's controller to use
+OpenChoreo as its deployment engine: with `BACKEND=openchoreo`, a pull request gets an
+OpenChoreo Project instead of an Argo CD Application.
 
 ![Demo served by OpenChoreo](docs/openchoreo-preview.png)
 
@@ -373,41 +374,112 @@ request.*
 3. **Checked what OpenChoreo built from them**: a Deployment (1/1 available), a Service on
    8080 and a Gateway API `HTTPRoute`, all in a namespace it created for the
    `development` environment. `curl` on the route returns `200 OK`.
+4. **Made Launchpad deploy through it**: a second backend in the controller, one OpenChoreo
+   Project per pull request, described under
+   [Launchpad on OpenChoreo](#launchpad-on-openchoreo) below.
 
-The whole sequence, with every command and the version of every tool, is in
+The install and the first deployment, with every command and the version of every tool, are in
 [`docs/openchoreo.md`](docs/openchoreo.md).
 
-### How the two compare
+### How the two models compare
 
-| | Launchpad | OpenChoreo (what I ran) |
+Launchpad's own model, against OpenChoreo's as it ships:
+
+| | Launchpad | OpenChoreo |
 |---|---|---|
 | What describes a deployment | One ApplicationSet element (`prNumber`, image tag) | A `Component` and a `Workload` |
 | Template that renders it | `charts/preview` (Deployment, Service, Ingress, quota, NetworkPolicy) | `ClusterComponentType` `deployment/service` |
 | Unit of environment | One namespace per pull request, `preview-pr-N` | Fixed `Environment`s (development, staging, production) with a `DeploymentPipeline` |
 | Where workloads run | The same cluster | A data plane registered with the control plane |
-| Routing | Traefik Ingress, `pr-N.<ip>.nip.io` | Gateway API `HTTPRoute`, host `development-default.openchoreoapis.localhost`, path `/launchpad-demo-http` |
+| Routing | Traefik Ingress, `pr-N.<ip>.nip.io` | Gateway API `HTTPRoute`, host `development-default.openchoreoapis.localhost`, path `/<component>-http` |
 | Lifecycle | Created on PR open, destroyed on close, TTL reaper | A long-lived Component promoted through environments |
 
 ### What I took from it
 
 - **Different units.** Launchpad's unit is a short-lived environment per pull request.
   OpenChoreo's is a long-lived component moved through a fixed set of environments. They
-  answer different questions.
-- **A detail about isolation.** The namespace OpenChoreo created
+  answer different questions, which is what made the backend below worth writing.
+- **Isolation follows the Project, not the Component.** The namespace OpenChoreo creates
   (`dp-default-default-development-...`) is named after the namespace, project and
-  environment, not the component. Judging by that name, several components in one project
-  would share a namespace, so per-pull-request isolation like Launchpad's would need a
-  project per pull request. I have not tested this.
+  environment, so several components in one project share a namespace. Per-pull-request
+  isolation therefore needs a *Project* per pull request. That is what the backend below
+  does, and deleting the Project takes the namespace with it.
 - **OpenChoreo gives more out of the box**: a console, a catalog, ownership, a project
   model, and an install that wires up a gateway, certificates and a secret store. Launchpad
   is smaller and more explicit about every moving part.
-- **A gap Launchpad addresses.** OpenChoreo has an open issue about ephemeral environments
+- **A gap Launchpad fills.** OpenChoreo has an open issue about ephemeral environments
   per branch or pull request
-  ([openchoreo#4345](https://github.com/openchoreo/openchoreo/issues/4345)), which is the
-  problem Launchpad's webhook controller, TTL and reaper solve.
-- **Not covered here.** I did not test how OpenChoreo cleans up, how it isolates workloads
-  from each other, promotion between environments, or its build and observability planes
-  (both optional and not installed). I make no claim about them.
+  ([openchoreo#4345](https://github.com/openchoreo/openchoreo/issues/4345)). The backend
+  below is one answer to it, built on OpenChoreo's own objects rather than around them.
+- **Not covered here.** I did not test promotion between environments, or the build and
+  observability planes (both optional and not installed). I make no claim about them.
+
+### Launchpad on OpenChoreo
+
+With `BACKEND=openchoreo` the controller stops editing the ApplicationSet. For each pull
+request it asks OpenChoreo for a Project, which owns its own namespace on the data plane:
+
+| PR event | What the controller does |
+|---|---|
+| opened / reopened | Creates `Project pr-N`, `ProjectReleaseBinding pr-N-development`, `Component launchpad-demo-pr-N`, and a `Workload` running `launchpad-demo:<commit>` |
+| synchronize (new push) | Patches the Workload's image to the new commit. Nothing else changes |
+| closed | Deletes the `Project`, and with it the preview's namespace |
+
+Everything around that is shared with the Argo CD backend: the HMAC signature check, the single
+edited PR comment, the Prometheus metrics, and idempotency, so a replayed webhook writes
+nothing. Argo CD stays the default and the AWS install is untouched.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BACKEND` | `argocd` | `argocd` or `openchoreo` |
+| `OC_NAMESPACE` | `default` | OpenChoreo namespace holding the objects |
+| `OC_ENVIRONMENT` | `development` | Environment each preview is bound to |
+| `OC_IMAGE` | `sihanudayaratna/launchpad-demo` | Image repository; the commit SHA is the tag |
+| `OC_HOST` | `development-default.openchoreoapis.localhost:19080` | Gateway host and port |
+
+The controller's permissions in this mode are a namespaced `Role`: `get`, `create`, `patch` and
+`delete` on `projects`, `projectreleasebindings`, `components` and `workloads`. No `list`, no
+`watch`, nothing cluster-wide, no access to secrets.
+
+#### What the end-to-end test proves
+
+[`scripts/openchoreo-e2e.sh`](scripts/openchoreo-e2e.sh) builds the controller, runs it against a
+local OpenChoreo cluster, and sends it signed pull-request webhooks the way GitHub would. All
+thirteen checks pass:
+
+```
+== webhook security
+  PASS: unsigned webhook rejected (401)
+== PR #9001 opened
+  PASS: opened accepted (202)
+  PASS: Project pr-9001 created
+  PASS: Workload runs the PR's commit
+== waiting up to 180s for the preview URL
+  PASS: http://development-default.openchoreoapis.localhost:19080/launchpad-demo-pr-9001-http/ answers 200
+== replay
+  PASS: replayed webhook accepted (202)
+  PASS: replay changed nothing
+== PR #9001 closed
+  PASS: closed accepted (202)
+  PASS: Project pr-9001 deleted
+  PASS: data-plane namespace cleaned up
+  PASS: closing again is harmless (202)
+```
+
+So the whole lifecycle holds up: a pull request becomes an isolated OpenChoreo Project that
+serves HTTP, a second identical webhook changes nothing, and closing the pull request removes
+the Project and the namespace underneath it.
+
+#### Limits of this backend
+
+- The Kyverno policies, `ResourceQuota` and `NetworkPolicy` come from Launchpad's own chart and
+  are **not** applied in this mode. Isolation here is OpenChoreo's: one namespace per Project.
+- Tested on a local k3d cluster, not on the AWS install.
+- The PR comment carries the gateway URL. That body is unit-tested, but the end-to-end test runs
+  without a GitHub token, so I have not watched a real comment appear in this mode.
+- The TTL reaper still only knows about the Argo CD backend.
+- The Component is the demo app. Other workloads mean parameterising the builders in
+  `cmd/controller/openchoreo.go`.
 
 ---
 

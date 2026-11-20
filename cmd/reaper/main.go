@@ -41,6 +41,10 @@ type reaper struct {
 	dryRun bool
 	repo   string
 	token  string
+
+	// Set together when BACKEND=openchoreo; oc nil means the Argo CD mode.
+	oc          ocClient
+	ocNamespace string
 }
 
 func (r *reaper) appSetPRs(ctx context.Context) (map[int]bool, []interface{}, error) {
@@ -300,12 +304,28 @@ func main() {
 		token:  os.Getenv("GITHUB_TOKEN"),
 	}
 
-	log.Printf("reaper starting: ttl=%s dry_run=%v github_repo=%q", ttl, dryRun, r.repo)
+	sweep := r.run
+	backend := os.Getenv("BACKEND")
+	switch backend {
+	case "", "argocd":
+		backend = "argocd"
+	case "openchoreo":
+		r.oc = dynOC{dyn}
+		r.ocNamespace = os.Getenv("OC_NAMESPACE")
+		if r.ocNamespace == "" {
+			r.ocNamespace = "default"
+		}
+		sweep = r.runOpenChoreo
+	default:
+		log.Fatalf("unknown BACKEND %q (want argocd or openchoreo)", backend)
+	}
+
+	log.Printf("reaper starting: backend=%s ttl=%s dry_run=%v github_repo=%q", backend, ttl, dryRun, r.repo)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	if err := r.run(ctx); err != nil {
+	if err := sweep(ctx); err != nil {
 		log.Fatal(err)
 	}
 }

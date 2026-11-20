@@ -195,7 +195,7 @@ automatically:
 |---|---|
 | `ResourceQuota` | Caps pods, CPU and memory per preview, so one PR cannot starve the node |
 | `NetworkPolicy` | Default-deny between namespaces |
-| Kyverno | Admission policies reject workloads that break the platform rules |
+| Kyverno | Admission policies on preview namespaces: allowed registries only, no `:latest`, no privileged containers, non-root only, requests and limits required |
 | RBAC | Controller and reaper have separate ServiceAccounts with only the verbs they need |
 | Webhook | HMAC-SHA256, constant-time compare, 1 MiB body limit |
 | Supply chain | Trivy scans the image and Checkov scans the infrastructure code; both run in CI |

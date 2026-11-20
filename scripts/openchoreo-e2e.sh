@@ -99,7 +99,7 @@ grep -q "already at" "$TMP/controller.log" \
 
 echo "== PR #$PR closed"
 [ "$(send closed)" = 202 ] && pass "closed accepted (202)" || fail "closed was not accepted"
-project_gone && pass "Project pr-$PR deleted" || fail "Project pr-$PR still exists"
+wait_for "$WAIT" project_gone && pass "Project pr-$PR deleted" || fail "Project pr-$PR still exists after ${WAIT}s"
 wait_for "$WAIT" dp_ns_gone \
   && pass "data-plane namespace cleaned up" || fail "data-plane namespace still present after ${WAIT}s"
 [ "$(send closed)" = 202 ] && pass "closing again is harmless (202)" || fail "second close failed"

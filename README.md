@@ -677,10 +677,10 @@ Honest list of what this is not:
 
 | Layer | Tool |
 |---|---|
-| Platform | OpenChoreo v1.3.3 (Projects, Components, Workloads, Gateway API) |
+| Platform | OpenChoreo v1.3.3 (Projects, Components, Workloads, Gateway API), with kgateway, cert-manager, External Secrets + OpenBao, ThunderID |
 | GitOps | Argo CD + ApplicationSet (the default backend) |
 | Orchestration | Kubernetes (kind and k3d locally, k3s on EC2) |
-| Ingress | Traefik, Gateway API on OpenChoreo |
+| Ingress | Traefik; Gateway API (kgateway) on OpenChoreo |
 | Packaging | Helm |
 | Policy | Kyverno, NetworkPolicy, ResourceQuota |
 | Containers | Docker, multi-stage, distroless, non-root |
@@ -689,7 +689,8 @@ Honest list of what this is not:
 | Infrastructure | Terraform |
 | Observability | Prometheus, Alertmanager, Grafana |
 | Language | Go |
-| AWS | EC2 + VPC |
+| AWS | EC2, VPC, Elastic IP |
+| TLS | Let's Encrypt through Traefik, on a DuckDNS name (Argo CD backend) |
 
 ---
 

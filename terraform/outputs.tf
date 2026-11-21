@@ -32,6 +32,7 @@ output "argocd" {
   value = var.bootstrap != "argocd" ? null : {
     preview_domain = local.base_domain
     tls            = local.tls_enabled
+    staging_ca     = local.tls_enabled && var.acme_staging
     webhook_url    = local.tls_enabled ? "https://webhook.${local.base_domain}/webhook" : "http://${aws_eip.k3s.public_ip}/webhook"
   }
 }

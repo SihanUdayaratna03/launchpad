@@ -11,7 +11,7 @@ end: an **OpenChoreo Project** per pull request, or an **Argo CD ApplicationSet*
 webhook, the signature check, the idempotency, the PR comment and the metrics are identical
 on both paths.
 
-![Launchpad architecture, OpenChoreo backend](docs/openchoreo-architecture.png)
+![Launchpad architecture: a GitHub webhook reaches the controller, which writes an OpenChoreo Project per pull request onto the data plane; ThunderID provides identity for the console; Argo CD is the default backend](docs/openchoreo-architecture.png)
 
 This is the Kubernetes equivalent of Vercel preview deployments and Heroku Review Apps. It
 exists because reviewing a diff is guesswork; clicking the thing is not.
@@ -67,6 +67,13 @@ guide step by step. The install is not one chart; it is a platform:
 | ThunderID v1.0.1 | Identity for the console |
 | openchoreo-control-plane 1.3.3 | The API: Projects, Components, Workloads, Environments |
 | openchoreo-data-plane 1.3.3 | Where workloads actually run, registered as a `ClusterDataPlane` |
+
+<a href="https://thunderid.dev"><img src="docs/thunderid-logo.png" alt="ThunderID" height="34"></a>
+
+[ThunderID](https://github.com/thunder-id/thunderid) is the open-source identity stack
+(an LF Decentralized Trust project) that sits behind the OpenChoreo console's sign-in. It is
+part of the platform I installed, so it is in the diagram above. Launchpad never calls it:
+the controller talks to the OpenChoreo API only.
 
 Docker Desktop on WSL2 with 10 GB of memory; the console then lists the data plane as
 **Connected**. Every command, and the version of every tool, is in
@@ -195,9 +202,9 @@ the Project and the namespace underneath it.
 - I did not test promotion between environments, or the build and observability planes (both
   optional, neither installed). I make no claim about them
 
-OpenChoreo is an Apache-2.0 project of Choreo Labs; its name and logo are used here only to
-identify the platform this backend runs on. This repository is not affiliated with or
-endorsed by it.
+OpenChoreo is an Apache-2.0 project of Choreo Labs, and ThunderID is an Apache-2.0 project
+(LF Decentralized Trust); their names and logos are used here only to identify the platforms
+this backend runs on. This repository is not affiliated with or endorsed by either.
 
 ---
 
@@ -677,10 +684,12 @@ Honest list of what this is not:
 
 | Layer | Tool |
 |---|---|
-| Platform | OpenChoreo v1.3.3 (Projects, Components, Workloads, Gateway API), with kgateway, cert-manager, External Secrets + OpenBao, ThunderID |
+| Platform | OpenChoreo v1.3.3 (Projects, Components, Workloads, Gateway API), with kgateway, cert-manager, External Secrets + OpenBao |
+| Identity | ThunderID v1.0.1 (OpenChoreo console sign-in) |
 | GitOps | Argo CD + ApplicationSet (the default backend) |
 | Orchestration | Kubernetes (kind and k3d locally, k3s on EC2) |
 | Ingress | Traefik; Gateway API (kgateway) on OpenChoreo |
+| TLS | Let's Encrypt through Traefik, on a DuckDNS name (Argo CD backend) |
 | Packaging | Helm |
 | Policy | Kyverno, NetworkPolicy, ResourceQuota |
 | Containers | Docker, multi-stage, distroless, non-root |
@@ -690,7 +699,6 @@ Honest list of what this is not:
 | Observability | Prometheus, Alertmanager, Grafana |
 | Language | Go |
 | AWS | EC2, VPC, Elastic IP |
-| TLS | Let's Encrypt through Traefik, on a DuckDNS name (Argo CD backend) |
 
 ---
 

@@ -395,6 +395,27 @@ Six alert rules ship with it: controller down, webhook errors, webhook rejection
 comment failures, too many previews (more than 8) and a preview that is not ready.
 A provisioned Grafana dashboard shows the same data.
 
+Alertmanager takes it from there. It groups alerts by name and severity, waits 30 seconds
+for others to join the group, repeats a still-firing alert every four hours rather than
+every evaluation, and sends the result to a Discord channel. A `critical` alert goes out
+in 10 seconds and repeats hourly, and it silences the `warning` of the same name, since a
+controller that is down also makes its previews look unhealthy.
+
+The webhook URL is a credential, so it is not in the GitOps repository: Alertmanager reads
+it from a mounted Secret through `webhook_url_file`, which also keeps it out of the config
+Alertmanager serves on its own API.
+
+![A Launchpad alert delivered to Discord](docs/alertmanager-discord.png)
+
+*A `critical` alert as it arrives. The message carries the labels, the summary, and a link
+back to the Prometheus query the alert came from.*
+
+[`hack/local-alertmanager-test.sh`](https://github.com/SihanUdayaratna03/launchpad-config/blob/main/hack/local-alertmanager-test.sh)
+in `launchpad-config` follows one alert the whole way on a throwaway k3d cluster: a rule
+fires, Prometheus hands it to Alertmanager, and Alertmanager delivers it to Discord. It
+checks the message really arrived by reading Alertmanager's own
+`alertmanager_notifications_total{integration="discord"}` and the failure counter beside it.
+
 Open Grafana:
 
 ```bash
@@ -431,7 +452,6 @@ Honest list of what this is not:
 - **A closed PR's empty namespace can stay up to 10 minutes** until the reaper runs
 - **First-image race.** A new commit's pod can show `ErrImagePull` until CI has
   pushed the `:sha` image; it recovers by itself on the next retry
-- **Alerts are visible in the Prometheus UI only.** There is no Alertmanager
 - **Secrets are created by hand** per cluster (`launchpad-webhook`, `launchpad-github`)
 - **One node.** At about 84% memory it fits a handful of previews, not a team
 - The "Preview destroyed" comment edit on PR close is covered by unit tests; I did
@@ -534,7 +554,7 @@ locally on k3d first, before spending AWS time, is how it was caught.
 | Registry | Docker Hub |
 | CI | GitHub Actions, Trivy, Checkov |
 | Infrastructure | Terraform |
-| Observability | Prometheus + Grafana |
+| Observability | Prometheus, Alertmanager, Grafana |
 | Language | Go |
 | AWS | EC2 + VPC |
 
@@ -642,7 +662,8 @@ Without the signature header the same request returns `401 Unauthorized`.
 | OpenChoreo backend: a Project per pull request, verified end to end | Done |
 | Reaper sweeps OpenChoreo Projects | Done |
 | OpenChoreo backend on the AWS install | Not done — local k3d only |
-| TLS, Alertmanager, Elastic IP | Not planned (see Limits) |
+| Alertmanager, alerts delivered to a Discord channel | Done |
+| TLS, Elastic IP | Not planned (see Limits) |
 
 ---
 

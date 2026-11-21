@@ -40,6 +40,12 @@ The preview itself, served at `http://pr-N.<ip>.nip.io`:
 
 ![Preview page](docs/preview-page.png)
 
+On AWS with TLS switched on, the same page is served over https from
+`pr-N.<name>.duckdns.org`, with a certificate from Let's Encrypt (this is pull
+request #33, the one that added the DuckDNS name):
+
+![Preview served over https](docs/preview-tls.png)
+
 The Grafana dashboard fed by the controller's metrics:
 
 ![Grafana dashboard](docs/grafana-dashboard.png)
@@ -180,7 +186,11 @@ objects at that last step instead, and nothing else about it changes.
 - The comment carries a hidden marker, so the bot edits its own comment instead of
   spamming a new one
 - A failed comment never fails the webhook; it only increments a metric
-- Preview host is `pr-N.<ip-with-dashes>.nip.io`, so no DNS setup is needed
+- Preview host is `pr-N.<ip-with-dashes>.nip.io`, so no DNS setup is needed; with a
+  DuckDNS name it is `pr-N.<name>.duckdns.org`
+- `TLS_RESOLVER` names a Traefik certificate resolver. When it is set, the comment links
+  to https and each ApplicationSet element carries the resolver, so existing previews
+  move over without a new push; empty, the default, changes nothing
 - One binary, two backends: `BACKEND` selects Argo CD (the default) or OpenChoreo
 
 ### `cmd/reaper` — environment reclamation
@@ -475,9 +485,20 @@ One `c7i-flex.large` (2 vCPU, 4 GiB) in `ap-southeast-2`, Free Tier eligible:
 
 Honest list of what this is not:
 
-- **HTTP only.** Previews use `nip.io` and plain HTTP; there is no TLS or real domain
-- **The IP changes on every `terraform apply`** (no Elastic IP, to stay inside the
-  free tier), so the GitHub webhook Payload URL and `my_ip_cidr` must be updated
+- **TLS is for the Argo CD backend.** Traefik obtains a certificate per preview over
+  HTTP-01; the OpenChoreo install on AWS is still plain http through its gateway
+- **Real certificates need a domain with a limit of its own.** `nip.io` and `sslip.io`
+  are not on the Public Suffix List, so every certificate under them shares one Let's
+  Encrypt limit with the rest of the world. Use a DuckDNS name; a production
+  certificate under an IP-derived name is refused
+- **The Elastic IP lives and dies with the stack.** It bills like any public IPv4
+  address while it is up and is released by `terraform destroy`. With a DuckDNS name the
+  hostnames and the webhook URL survive that; only `my_ip_cidr` needs updating if your
+  own address changed
+- **Certificates are requested when Traefik starts.** Restart it before they are issued
+  and validation can fail, because a rolling restart briefly has two pods and the
+  challenge can reach the old one. Recreate the Ingress to ask again; issued
+  certificates are kept on the node and survive restarts
 - **A closed PR's empty namespace can stay up to 10 minutes** until the reaper runs
 - **First-image race.** A new commit's pod can show `ErrImagePull` until CI has
   pushed the `:sha` image; it recovers by itself on the next retry
@@ -631,12 +652,40 @@ and the webhook endpoint to hand GitHub. Then:
    ```
 
 3. In the GitHub repository, add a webhook with Payload URL
-   `http://<public_ip>/webhook` — on the OpenChoreo install it is
+   `http://<public_ip>/webhook` (`https://webhook.<name>.duckdns.org/webhook` with TLS,
+   see below) — on the OpenChoreo install it is
    `http://<public_ip>:30080/webhook`, since the gateway holds port 80 there — with
    content type `application/json`, the same secret, and the **Pull requests** event.
 4. Open a pull request.
 
 `terraform destroy` removes everything; nothing keeps billing.
+
+### TLS and a stable name
+
+Make a subdomain at [duckdns.org](https://www.duckdns.org), then:
+
+```hcl
+# terraform.tfvars
+acme_email   = "you@example.com"
+duckdns_name = "launchpad-yourname"
+acme_staging = true                    # false for a real certificate
+```
+
+```bash
+export TF_VAR_duckdns_token=...        # used by a local curl only
+terraform apply
+```
+
+Terraform points `<name>.duckdns.org` at the Elastic IP (DuckDNS answers for every name
+below it), so `pr-N.<name>.duckdns.org` and `webhook.<name>.duckdns.org` resolve. The
+node's Traefik obtains a certificate for each, http redirects to https, and the
+controller links `https://` URLs. The token never reaches the instance, its user data
+or the Terraform state.
+
+Start with `acme_staging = true`: the staging CA has far higher limits, so a mistake does
+not spend the real ones, but GitHub and browsers do not trust its certificates, so turn
+SSL verification off on the webhook for that run. Changing `acme_staging` replaces the
+node, because the setting lives in its user data.
 
 ---
 
@@ -696,7 +745,7 @@ Without the signature header the same request returns `401 Unauthorized`.
 | Reaper sweeps OpenChoreo Projects | Done |
 | OpenChoreo backend on AWS, driven by a real pull request | Done |
 | Alertmanager, alerts delivered to a Discord channel | Done |
-| TLS, Elastic IP | Not planned (see Limits) |
+| Elastic IP and TLS (Let's Encrypt), on AWS with a real pull request | Done |
 
 ---
 

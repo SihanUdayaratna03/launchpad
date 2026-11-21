@@ -21,7 +21,9 @@ resource "aws_instance" "k3s" {
   key_name               = aws_key_pair.launchpad.key_name
   ebs_optimized          = true
 
-  user_data = templatefile("${path.module}/user-data.sh.tftpl", {
+  user_data = var.bootstrap == "openchoreo" ? templatefile("${path.module}/user-data-openchoreo.sh.tftpl", {
+    k3s_version = var.k3s_version
+    }) : templatefile("${path.module}/user-data.sh.tftpl", {
     config_repo    = var.config_repo
     argocd_version = var.argocd_version
   })
@@ -34,9 +36,9 @@ resource "aws_instance" "k3s" {
 
   root_block_device {
     volume_type = "gp3"
-    volume_size = 20
+    volume_size = var.root_volume_size
     encrypted   = true
   }
 
-  tags = { Name = "launchpad-k3s" }
+  tags = { Name = "launchpad-k3s-${var.bootstrap}" }
 }

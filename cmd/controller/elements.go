@@ -17,6 +17,20 @@ var commitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 var domainPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`)
 
+// A Traefik certificate resolver name. It ends up as an Ingress annotation
+// value, so only what a resolver can actually be called is accepted.
+var resolverPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+
+// previewURL is the address of a preview served at host. A preview gets
+// https only when a certificate resolver is configured to obtain its
+// certificate.
+func previewURL(host, resolver string) string {
+	if resolver != "" {
+		return "https://" + host
+	}
+	return "http://" + host
+}
+
 // previewHost is where PR pr is served. An unset or malformed base domain
 // gives no host, which makes the chart skip the Ingress.
 func previewHost(base string, pr int) string {
@@ -34,14 +48,21 @@ const (
 	updated
 )
 
-func element(pr int, sha, host string) map[string]interface{} {
-	return map[string]interface{}{"prNumber": fmt.Sprintf("%d", pr), "sha": sha, "host": host}
+// element is one entry of the ApplicationSet's list. tlsResolver is left out
+// when empty, so an install without TLS writes exactly what it always did.
+func element(pr int, sha, host, resolver string) map[string]interface{} {
+	e := map[string]interface{}{"prNumber": fmt.Sprintf("%d", pr), "sha": sha, "host": host}
+	if resolver != "" {
+		e["tlsResolver"] = resolver
+	}
+	return e
 }
 
-// upsertElement returns the list with PR pr at commit sha, served at host. It
-// never mutates its input. A PR already at this commit and host is reported as
-// unchanged, so a replayed webhook writes nothing.
-func upsertElement(elements []interface{}, pr int, sha, host string) ([]interface{}, change) {
+// upsertElement returns the list with PR pr at commit sha, served at host and
+// certified by resolver (empty for none). It never mutates its input. A PR
+// already at this commit, host and resolver is reported as unchanged, so a
+// replayed webhook writes nothing.
+func upsertElement(elements []interface{}, pr int, sha, host, resolver string) ([]interface{}, change) {
 	want := fmt.Sprintf("%d", pr)
 
 	for i, e := range elements {
@@ -49,16 +70,17 @@ func upsertElement(elements []interface{}, pr int, sha, host string) ([]interfac
 		if !ok || m["prNumber"] != want {
 			continue
 		}
-		if m["sha"] == sha && m["host"] == host {
+		have, _ := m["tlsResolver"].(string)
+		if m["sha"] == sha && m["host"] == host && have == resolver {
 			return elements, unchanged
 		}
 		next := append([]interface{}(nil), elements...)
-		next[i] = element(pr, sha, host)
+		next[i] = element(pr, sha, host, resolver)
 		return next, updated
 	}
 
 	next := append([]interface{}(nil), elements...)
-	return append(next, element(pr, sha, host)), added
+	return append(next, element(pr, sha, host, resolver)), added
 }
 
 // removeElement returns the list without PR pr, and whether it was there.

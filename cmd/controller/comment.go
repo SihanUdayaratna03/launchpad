@@ -43,13 +43,7 @@ func shortSHA(sha string) string {
 	return sha[:7]
 }
 
-func readyBody(host, sha string) string {
-	return fmt.Sprintf("%s\n🚀 **Preview ready:** http://%s\n\nCommit `%s`. It updates on every push and is destroyed when this pull request closes.",
-		commentMarker, host, shortSHA(sha))
-}
-
-// readyURLBody is readyBody for a backend that already knows the full URL,
-// path included.
+// readyURLBody announces a preview at url, whatever its scheme and path.
 func readyURLBody(url, sha string) string {
 	return fmt.Sprintf("%s\n🚀 **Preview ready:** %s\n\nCommit `%s`. It updates on every push and is destroyed when this pull request closes.",
 		commentMarker, url, shortSHA(sha))

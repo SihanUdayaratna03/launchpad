@@ -53,7 +53,7 @@ func TestCommentCreatedWhenNoneExists(t *testing.T) {
 	c, stop := newTestCommenter(f)
 	defer stop()
 
-	if err := c.upsert(context.Background(), "o/r", 12, readyBody("pr-12.x.nip.io", shaA), true); err != nil {
+	if err := c.upsert(context.Background(), "o/r", 12, readyURLBody(previewURL("pr-12.x.nip.io", ""), shaA), true); err != nil {
 		t.Fatal(err)
 	}
 	last := f.requests[len(f.requests)-1]
@@ -76,7 +76,7 @@ func TestCommentEditedWhenOursExists(t *testing.T) {
 	c, stop := newTestCommenter(f)
 	defer stop()
 
-	if err := c.upsert(context.Background(), "o/r", 12, readyBody("h", shaB), true); err != nil {
+	if err := c.upsert(context.Background(), "o/r", 12, readyURLBody("h", shaB), true); err != nil {
 		t.Fatal(err)
 	}
 	if last := f.requests[len(f.requests)-1]; last != "PATCH /repos/o/r/issues/comments/2" {
@@ -111,7 +111,7 @@ func TestCloseNeverCreatesComment(t *testing.T) {
 }
 
 func TestCloseEditsExistingComment(t *testing.T) {
-	f := &fakeGitHub{comments: []issueComment{{ID: 5, Body: readyBody("h", shaA)}}}
+	f := &fakeGitHub{comments: []issueComment{{ID: 5, Body: readyURLBody("h", shaA)}}}
 	c, stop := newTestCommenter(f)
 	defer stop()
 
@@ -159,9 +159,21 @@ func TestNewCommenterWithoutTokenIsNil(t *testing.T) {
 }
 
 func TestReadyBodyStartsWithMarker(t *testing.T) {
-	for _, b := range []string{readyBody("h", shaA), deployingBody(shaA), removedBody()} {
+	for _, b := range []string{readyURLBody("h", shaA), deployingBody(shaA), removedBody()} {
 		if !strings.HasPrefix(b, commentMarker) {
 			t.Errorf("body does not start with the marker: %q", b)
+		}
+	}
+}
+
+func TestReadyBodyCarriesTheScheme(t *testing.T) {
+	for _, tt := range []struct{ resolver, want string }{
+		{"", "http://pr-12.x.nip.io"},
+		{"le", "https://pr-12.x.nip.io"},
+	} {
+		body := readyURLBody(previewURL("pr-12.x.nip.io", tt.resolver), shaA)
+		if !strings.Contains(body, tt.want) {
+			t.Errorf("resolver %q: body %q does not contain %q", tt.resolver, body, tt.want)
 		}
 	}
 }

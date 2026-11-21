@@ -20,7 +20,7 @@ func el(pr, sha string) interface{} {
 func hostFor(pr string) string { return "h" + pr }
 
 func TestUpsertAddsNewPR(t *testing.T) {
-	got, res := upsertElement(nil, 12, shaA, hostFor("12"))
+	got, res := upsertElement(nil, 12, shaA, hostFor("12"), "")
 	if res != added {
 		t.Fatalf("result = %v, want added", res)
 	}
@@ -31,7 +31,7 @@ func TestUpsertAddsNewPR(t *testing.T) {
 
 func TestUpsertSameCommitIsUnchanged(t *testing.T) {
 	in := []interface{}{el("12", shaA)}
-	got, res := upsertElement(in, 12, shaA, hostFor("12"))
+	got, res := upsertElement(in, 12, shaA, hostFor("12"), "")
 	if res != unchanged {
 		t.Fatalf("result = %v, want unchanged", res)
 	}
@@ -42,7 +42,7 @@ func TestUpsertSameCommitIsUnchanged(t *testing.T) {
 
 func TestUpsertNewCommitUpdatesInPlace(t *testing.T) {
 	in := []interface{}{el("7", shaA), el("12", shaA), el("20", shaA)}
-	got, res := upsertElement(in, 12, shaB, hostFor("12"))
+	got, res := upsertElement(in, 12, shaB, hostFor("12"), "")
 	if res != updated {
 		t.Fatalf("result = %v, want updated", res)
 	}
@@ -54,8 +54,8 @@ func TestUpsertNewCommitUpdatesInPlace(t *testing.T) {
 
 func TestUpsertDoesNotMutateInput(t *testing.T) {
 	in := []interface{}{el("12", shaA)}
-	upsertElement(in, 12, shaB, hostFor("12"))
-	upsertElement(in, 99, shaB, hostFor("99"))
+	upsertElement(in, 12, shaB, hostFor("12"), "")
+	upsertElement(in, 99, shaB, hostFor("99"), "")
 	if want := []interface{}{el("12", shaA)}; !reflect.DeepEqual(in, want) {
 		t.Errorf("input was mutated: %v", in)
 	}
@@ -63,7 +63,7 @@ func TestUpsertDoesNotMutateInput(t *testing.T) {
 
 func TestUpsertKeepsOtherPRs(t *testing.T) {
 	in := []interface{}{el("7", shaA)}
-	got, _ := upsertElement(in, 12, shaB, hostFor("12"))
+	got, _ := upsertElement(in, 12, shaB, hostFor("12"), "")
 	if want := []interface{}{el("7", shaA), el("12", shaB)}; !reflect.DeepEqual(got, want) {
 		t.Errorf("elements = %v, want %v", got, want)
 	}
@@ -71,7 +71,7 @@ func TestUpsertKeepsOtherPRs(t *testing.T) {
 
 func TestUpsertIgnoresMalformedElements(t *testing.T) {
 	in := []interface{}{"junk", 42, nil, el("12", shaA)}
-	got, res := upsertElement(in, 12, shaB, hostFor("12"))
+	got, res := upsertElement(in, 12, shaB, hostFor("12"), "")
 	if res != updated || len(got) != 4 {
 		t.Fatalf("result = %v, len = %d", res, len(got))
 	}
@@ -82,7 +82,7 @@ func TestUpsertIgnoresMalformedElements(t *testing.T) {
 
 func TestPrNumberMustMatchExactly(t *testing.T) {
 	in := []interface{}{el("12", shaA)}
-	got, res := upsertElement(in, 1, shaB, hostFor("1"))
+	got, res := upsertElement(in, 1, shaB, hostFor("1"), "")
 	if res != added || len(got) != 2 {
 		t.Errorf("PR 1 must not match PR 12: result = %v, len = %d", res, len(got))
 	}
@@ -137,7 +137,7 @@ func TestCommitPattern(t *testing.T) {
 }
 
 func TestUpsertCarriesHost(t *testing.T) {
-	got, _ := upsertElement(nil, 12, shaA, host12)
+	got, _ := upsertElement(nil, 12, shaA, host12, "")
 	m := got[0].(map[string]interface{})
 	if m["host"] != host12 {
 		t.Errorf("host = %v, want %v", m["host"], host12)
@@ -146,7 +146,7 @@ func TestUpsertCarriesHost(t *testing.T) {
 
 func TestUpsertNewHostSameCommitUpdates(t *testing.T) {
 	in := []interface{}{map[string]interface{}{"prNumber": "12", "sha": shaA, "host": "old"}}
-	got, res := upsertElement(in, 12, shaA, host12)
+	got, res := upsertElement(in, 12, shaA, host12, "")
 	if res != updated {
 		t.Fatalf("result = %v, want updated", res)
 	}
@@ -157,7 +157,7 @@ func TestUpsertNewHostSameCommitUpdates(t *testing.T) {
 
 func TestUpsertLegacyElementWithoutHostUpdates(t *testing.T) {
 	in := []interface{}{map[string]interface{}{"prNumber": "12", "sha": shaA}}
-	_, res := upsertElement(in, 12, shaA, "")
+	_, res := upsertElement(in, 12, shaA, "", "")
 	if res != updated {
 		t.Errorf("result = %v, want updated so old elements gain a host key", res)
 	}
@@ -178,6 +178,97 @@ func TestPreviewHost(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := previewHost(tt.base, tt.pr); got != tt.want {
 				t.Errorf("previewHost(%q, %d) = %q, want %q", tt.base, tt.pr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUpsertCarriesResolver(t *testing.T) {
+	got, _ := upsertElement(nil, 12, shaA, host12, "le")
+	m := got[0].(map[string]interface{})
+	if m["tlsResolver"] != "le" {
+		t.Errorf("tlsResolver = %v, want le", m["tlsResolver"])
+	}
+}
+
+// An install without TLS must write exactly what it wrote before the key
+// existed, or turning the feature off would rewrite every element.
+func TestUpsertWithoutResolverLeavesTheKeyOut(t *testing.T) {
+	got, _ := upsertElement(nil, 12, shaA, host12, "")
+	if _, ok := got[0].(map[string]interface{})["tlsResolver"]; ok {
+		t.Errorf("element has a tlsResolver key with no resolver set: %v", got[0])
+	}
+}
+
+func TestUpsertSameResolverIsUnchanged(t *testing.T) {
+	in := []interface{}{element(12, shaA, host12, "le")}
+	got, res := upsertElement(in, 12, shaA, host12, "le")
+	if res != unchanged {
+		t.Fatalf("result = %v, want unchanged", res)
+	}
+	if len(got) != 1 {
+		t.Errorf("len = %d, want 1", len(got))
+	}
+}
+
+// An element written before TLS was switched on gains the resolver, so the
+// previews that already exist move to https without waiting for a new push.
+func TestUpsertAddingResolverUpdates(t *testing.T) {
+	in := []interface{}{element(12, shaA, host12, "")}
+	got, res := upsertElement(in, 12, shaA, host12, "le")
+	if res != updated {
+		t.Fatalf("result = %v, want updated", res)
+	}
+	if got[0].(map[string]interface{})["tlsResolver"] != "le" {
+		t.Errorf("resolver not added: %v", got[0])
+	}
+}
+
+func TestUpsertDroppingResolverUpdates(t *testing.T) {
+	in := []interface{}{element(12, shaA, host12, "le")}
+	got, res := upsertElement(in, 12, shaA, host12, "")
+	if res != updated {
+		t.Fatalf("result = %v, want updated", res)
+	}
+	if _, ok := got[0].(map[string]interface{})["tlsResolver"]; ok {
+		t.Errorf("resolver not removed: %v", got[0])
+	}
+}
+
+func TestPreviewURL(t *testing.T) {
+	tests := []struct {
+		name, host, resolver, want string
+	}{
+		{"no resolver is plain http", "pr-12.1-2-3-4.sslip.io", "", "http://pr-12.1-2-3-4.sslip.io"},
+		{"a resolver means https", "pr-12.1-2-3-4.sslip.io", "le", "https://pr-12.1-2-3-4.sslip.io"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := previewURL(tt.host, tt.resolver); got != tt.want {
+				t.Errorf("previewURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolverPattern(t *testing.T) {
+	tests := []struct {
+		name, in string
+		want     bool
+	}{
+		{"le", "le", true},
+		{"with digits and dashes", "letsencrypt-staging2", true},
+		{"empty", "", false},
+		{"uppercase", "LE", false},
+		{"leading digit", "1le", false},
+		{"slash", "le/x", false},
+		{"annotation injection", "le\ntraefik.ingress.kubernetes.io/router.tls: false", false},
+		{"too long", strings.Repeat("a", 64), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolverPattern.MatchString(tt.in); got != tt.want {
+				t.Errorf("resolverPattern(%q) = %v, want %v", tt.in, got, tt.want)
 			}
 		})
 	}

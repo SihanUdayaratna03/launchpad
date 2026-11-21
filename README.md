@@ -372,16 +372,19 @@ with OpenChoreo in Argo CD's place: k3s without Traefik, so OpenChoreo's gateway
 node's 8 GiB; and the controller published on a NodePort, because there is no Ingress left to
 put it behind.
 
-GitHub posts to that NodePort. Opening a pull request against this repository and merging it
-drove the whole loop on the EC2 node:
+GitHub posts to that NodePort. A pull request on this repository — opened, pushed to, then
+merged — drove the whole loop on the EC2 node:
 
 ```
-PR #29: OpenChoreo project pr-29 created at 8518bbf
-PR #29: OpenChoreo project pr-29 deleted
+14:32:04  PR #30: OpenChoreo project pr-30 created at e0fcf95
+14:41:03  PR #30: preview updated to 517af54
+14:47:09  PR #30: OpenChoreo project pr-30 deleted
 ```
 
-Between those two lines the Project held a data-plane namespace of its own, a running pod and
-an `HTTPRoute`, and the preview answered `200` on the public gateway.
+Between the first line and the last the Project held a data-plane namespace of its own, a
+running pod and an `HTTPRoute`, and the preview answered `200` on the public gateway. The
+middle line is a second commit rolling the same preview forward rather than building another
+one. Merging took the Project and its namespace with it.
 
 ![A pull request's preview on AWS, served by OpenChoreo](docs/openchoreo-aws-preview.png)
 

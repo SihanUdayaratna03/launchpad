@@ -13,6 +13,15 @@ output "bootstrap_log" {
   value       = "ssh -i ~/.ssh/launchpad ubuntu@${aws_instance.k3s.public_ip} tail -f /var/log/launchpad-bootstrap.log"
 }
 
+output "openchoreo" {
+  description = "Hostnames and the webhook URL for the openchoreo bootstrap"
+  value = var.bootstrap != "openchoreo" ? null : {
+    control_plane_domain = "openchoreo.${replace(aws_instance.k3s.public_ip, ".", "-")}.nip.io"
+    data_plane_domain    = "apps.openchoreo.${replace(aws_instance.k3s.public_ip, ".", "-")}.nip.io"
+    webhook_url          = "http://${aws_instance.k3s.public_ip}:${var.webhook_node_port}/webhook"
+  }
+}
+
 output "kubeconfig" {
   description = "Fetch a kubeconfig for this cluster once the bootstrap has finished"
   value       = "ssh -i ~/.ssh/launchpad ubuntu@${aws_instance.k3s.public_ip} cat /etc/rancher/k3s/k3s.yaml | sed 's/127.0.0.1/${aws_instance.k3s.public_ip}/' > ~/.kube/launchpad-aws"

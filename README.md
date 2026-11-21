@@ -383,6 +383,14 @@ PR #29: OpenChoreo project pr-29 deleted
 Between those two lines the Project held a data-plane namespace of its own, a running pod and
 an `HTTPRoute`, and the preview answered `200` on the public gateway.
 
+![A pull request's preview on AWS, served by OpenChoreo](docs/openchoreo-aws-preview.png)
+
+*The preview for a pull request on this repository, reached over the public internet through
+OpenChoreo's gateway on the EC2 node. The commit is the one the pull request is on. The page
+says `#?` and `unknown` for the namespace and pod for the same reason as the local screenshot
+above: those come from environment variables Launchpad's own chart sets and the OpenChoreo
+Workload does not.*
+
 #### Limits of this backend
 
 - The Kyverno policies, `ResourceQuota` and `NetworkPolicy` come from Launchpad's own chart and

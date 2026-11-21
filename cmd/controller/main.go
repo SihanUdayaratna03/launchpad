@@ -56,9 +56,10 @@ type controller struct {
 	client dynamic.Interface
 	secret []byte // shared secret for webhook signature verification
 
-	baseDomain string     // e.g. 13-211-45-67.nip.io; empty disables preview URLs
-	comments   *commenter // nil disables PR comments
-	metrics    *metrics   // nil records nothing
+	baseDomain  string     // e.g. 13-211-45-67.nip.io; empty disables preview URLs
+	tlsResolver string     // Traefik certificate resolver; empty serves previews over plain http
+	comments    *commenter // nil disables PR comments
+	metrics     *metrics   // nil records nothing
 
 	oc *openchoreo // non-nil when BACKEND=openchoreo; nil means the Argo CD backend
 }
@@ -164,7 +165,7 @@ func (c *controller) addPreview(ctx context.Context, pr int, sha string) (change
 		return unchanged, err
 	}
 
-	next, result := upsertElement(elements, pr, sha, previewHost(c.baseDomain, pr))
+	next, result := upsertElement(elements, pr, sha, previewHost(c.baseDomain, pr), c.tlsResolver)
 	if result == unchanged {
 		log.Printf("PR #%d: preview already at %s", pr, sha[:7])
 		return unchanged, nil
@@ -279,7 +280,7 @@ func (c *controller) handleWebhook(w http.ResponseWriter, r *http.Request) {
 			if c.oc != nil {
 				body = readyURLBody(c.oc.url(event.Number), sha)
 			} else if host := previewHost(c.baseDomain, event.Number); host != "" {
-				body = readyBody(host, sha)
+				body = readyURLBody(previewURL(host, c.tlsResolver), sha)
 			}
 			c.announce(ctx, event.Repository.FullName, event.Number, body, true)
 		}
@@ -357,11 +358,19 @@ func main() {
 	}
 
 	c := &controller{
-		client:     dyn,
-		secret:     secret,
-		baseDomain: os.Getenv("BASE_DOMAIN"),
-		comments:   newCommenter(os.Getenv("GITHUB_TOKEN")),
-		metrics:    newMetrics(),
+		client:      dyn,
+		secret:      secret,
+		baseDomain:  os.Getenv("BASE_DOMAIN"),
+		tlsResolver: os.Getenv("TLS_RESOLVER"),
+		comments:    newCommenter(os.Getenv("GITHUB_TOKEN")),
+		metrics:     newMetrics(),
+	}
+
+	if c.tlsResolver != "" {
+		if !resolverPattern.MatchString(c.tlsResolver) {
+			log.Fatalf("TLS_RESOLVER %q is not a valid resolver name", c.tlsResolver)
+		}
+		log.Printf("previews are served over https, certificates from resolver %q", c.tlsResolver)
 	}
 
 	switch backend := os.Getenv("BACKEND"); backend {

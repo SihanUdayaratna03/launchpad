@@ -364,11 +364,29 @@ So the whole lifecycle holds up: a pull request becomes an isolated OpenChoreo P
 serves HTTP, a second identical webhook changes nothing, and closing the pull request removes
 the Project and the namespace underneath it.
 
+#### On AWS
+
+The same backend runs on the Terraform stack. `bootstrap = "openchoreo"` brings the node up
+with OpenChoreo in Argo CD's place: k3s without Traefik, so OpenChoreo's gateway owns 80 and
+443 and preview URLs carry no port; swap, because the control plane is tight on a free-tier
+node's 8 GiB; and the controller published on a NodePort, because there is no Ingress left to
+put it behind.
+
+GitHub posts to that NodePort. Opening a pull request against this repository and merging it
+drove the whole loop on the EC2 node:
+
+```
+PR #29: OpenChoreo project pr-29 created at 8518bbf
+PR #29: OpenChoreo project pr-29 deleted
+```
+
+Between those two lines the Project held a data-plane namespace of its own, a running pod and
+an `HTTPRoute`, and the preview answered `200` on the public gateway.
+
 #### Limits of this backend
 
 - The Kyverno policies, `ResourceQuota` and `NetworkPolicy` come from Launchpad's own chart and
   are **not** applied in this mode. Isolation here is OpenChoreo's: one namespace per Project.
-- Tested on a local k3d cluster, not on the AWS install.
 - The PR comment carries the gateway URL. That body is unit-tested, but the end-to-end test runs
   without a GitHub token, so I have not watched a real comment appear in this mode.
 - The reaper's OpenChoreo mode is unit-tested, but I have not yet run it on a schedule
@@ -588,7 +606,10 @@ terraform apply
 ```
 
 The user-data script installs k3s and Argo CD and registers the root application, so
-the rest of the platform comes up on its own. Then:
+the rest of the platform comes up on its own. Setting `bootstrap = "openchoreo"` in
+`terraform.tfvars` brings the node up with OpenChoreo in its place instead; everything else
+about the stack is the same, and `terraform output openchoreo` then prints the gateway domain
+and the webhook endpoint to hand GitHub. Then:
 
 1. Fetch the kubeconfig and point it at the new public IP.
 2. Create the two secrets in the `argocd` namespace:
@@ -599,8 +620,9 @@ the rest of the platform comes up on its own. Then:
    ```
 
 3. In the GitHub repository, add a webhook with Payload URL
-   `http://<public_ip>/webhook`, content type `application/json`, the same secret,
-   and the **Pull requests** event.
+   `http://<public_ip>/webhook` — on the OpenChoreo install it is
+   `http://<public_ip>:30080/webhook`, since the gateway holds port 80 there — with
+   content type `application/json`, the same secret, and the **Pull requests** event.
 4. Open a pull request.
 
 `terraform destroy` removes everything; nothing keeps billing.
@@ -661,7 +683,7 @@ Without the signature header the same request returns `401 Unauthorized`.
 | Prometheus, Grafana, alert rules | Done |
 | OpenChoreo backend: a Project per pull request, verified end to end | Done |
 | Reaper sweeps OpenChoreo Projects | Done |
-| OpenChoreo backend on the AWS install | Not done — local k3d only |
+| OpenChoreo backend on AWS, driven by a real pull request | Done |
 | Alertmanager, alerts delivered to a Discord channel | Done |
 | TLS, Elastic IP | Not planned (see Limits) |
 

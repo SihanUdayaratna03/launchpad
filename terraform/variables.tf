@@ -68,7 +68,7 @@ variable "argocd_version" {
 }
 
 variable "dns_suffix" {
-  description = "Wildcard DNS service that turns <anything>.<ip-with-dashes>.<suffix> into the node's IP. Let's Encrypt counts every certificate under a suffix that is not on the Public Suffix List against one shared limit of 50 a week, so check the list before relying on a suffix for TLS."
+  description = "Wildcard DNS service that turns <anything>.<ip-with-dashes>.<suffix> into the node's IP. It names the hosts when duckdns_name is empty. nip.io and sslip.io are not on the Public Suffix List, so Let's Encrypt counts every certificate under them against one limit of 50 a week for the whole world: fine for the staging CA, not for a real certificate. Use duckdns_name for that."
   type        = string
   default     = "nip.io"
 
@@ -76,6 +76,24 @@ variable "dns_suffix" {
     condition     = can(regex("^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$", var.dns_suffix))
     error_message = "dns_suffix must be a lowercase domain name such as nip.io."
   }
+}
+
+variable "duckdns_name" {
+  description = "Your DuckDNS subdomain, e.g. launchpad-sihan for launchpad-sihan.duckdns.org. Previews are then pr-N.<name>.duckdns.org, whatever the node's IP is. duckdns.org is on the Public Suffix List, so your subdomain gets Let's Encrypt's 50 certificates a week to itself. Terraform points it at the Elastic IP on every apply. argocd bootstrap only."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.duckdns_name == "" || can(regex("^[a-z0-9]([a-z0-9-]{0,40}[a-z0-9])?$", var.duckdns_name))
+    error_message = "duckdns_name is the part before .duckdns.org: lowercase letters, digits and hyphens."
+  }
+}
+
+variable "duckdns_token" {
+  description = "Your DuckDNS token. Pass it as TF_VAR_duckdns_token rather than writing it into a file. It is only used by a local curl, so it never reaches the instance or its user data."
+  type        = string
+  default     = ""
+  sensitive   = true
 }
 
 variable "acme_email" {

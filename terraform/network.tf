@@ -80,6 +80,19 @@ resource "aws_vpc_security_group_ingress_rule" "https" {
   to_port           = 443
 }
 
+# Only in the openchoreo bootstrap: traefik is disabled there, so the webhook is
+# published on a NodePort. The port is open to the internet because GitHub calls
+# it; the HMAC signature is what actually protects it.
+resource "aws_vpc_security_group_ingress_rule" "webhook_nodeport" {
+  count             = var.bootstrap == "openchoreo" ? 1 : 0
+  security_group_id = aws_security_group.node.id
+  description       = "Launchpad webhook NodePort"
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = var.webhook_node_port
+  to_port           = var.webhook_node_port
+}
+
 resource "aws_vpc_security_group_egress_rule" "all" {
   security_group_id = aws_security_group.node.id
   description       = "Outbound: image pulls, GitHub, package mirrors"

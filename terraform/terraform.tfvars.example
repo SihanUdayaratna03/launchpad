@@ -1,8 +1,13 @@
 my_ip_cidr = "203.0.113.7/32"
 
 # TLS for the argocd bootstrap. Leave acme_email out to stay on plain http.
-# Check that dns_suffix is on the Public Suffix List first (see the README):
-# nip.io is not, so every nip.io certificate in the world shares one limit.
+#
+# Real certificates need a domain of your own: nip.io and sslip.io are not on
+# the Public Suffix List, so every certificate under them shares one global
+# Let's Encrypt limit. A DuckDNS subdomain is (duckdns.org is on the list), so
+# its limit is yours alone. Create launchpad-sihan.duckdns.org at duckdns.org,
+# then export the token instead of writing it here:
+#   export TF_VAR_duckdns_token=...
 # acme_email   = "you@example.com"
-# dns_suffix   = "sslip.io"
+# duckdns_name = "launchpad-sihan"
 # acme_staging = true   # set to false once the staging run works

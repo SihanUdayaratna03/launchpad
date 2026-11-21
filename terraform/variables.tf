@@ -66,3 +66,31 @@ variable "argocd_version" {
   type        = string
   default     = "stable"
 }
+
+variable "dns_suffix" {
+  description = "Wildcard DNS service that turns <anything>.<ip-with-dashes>.<suffix> into the node's IP. Let's Encrypt counts every certificate under a suffix that is not on the Public Suffix List against one shared limit of 50 a week, so check the list before relying on a suffix for TLS."
+  type        = string
+  default     = "nip.io"
+
+  validation {
+    condition     = can(regex("^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$", var.dns_suffix))
+    error_message = "dns_suffix must be a lowercase domain name such as nip.io."
+  }
+}
+
+variable "acme_email" {
+  description = "Contact address for Let's Encrypt. Setting it turns on TLS for the argocd bootstrap: Traefik obtains a certificate for every preview and for the webhook host. Empty leaves everything on plain http."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.acme_email == "" || can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.acme_email))
+    error_message = "acme_email must be an email address, or empty."
+  }
+}
+
+variable "acme_staging" {
+  description = "Use Let's Encrypt's staging CA. Its certificates are not trusted by browsers, but it has its own, far higher limits, so a first run does not spend the real ones. Set it to false once the staging run works."
+  type        = bool
+  default     = true
+}

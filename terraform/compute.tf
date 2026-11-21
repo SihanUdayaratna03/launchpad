@@ -13,6 +13,29 @@ resource "aws_key_pair" "launchpad" {
   public_key = file(pathexpand(var.public_key_path))
 }
 
+locals {
+  # TLS is only wired into the argocd bootstrap: the openchoreo one has no
+  # Traefik, and its gateway terminates TLS in its own way.
+  tls_enabled = var.acme_email != "" && var.bootstrap == "argocd"
+  base_domain = "${replace(aws_eip.k3s.public_ip, ".", "-")}.${var.dns_suffix}"
+}
+
+# The address is allocated first and handed to the bootstrap script, which
+# builds every hostname from it. Reading it from the instance metadata instead
+# would race the association: cloud-init can run before the Elastic IP is
+# attached and see the throwaway address the instance launched with.
+resource "aws_eip" "k3s" {
+  domain = "vpc"
+  tags   = { Name = "launchpad-k3s-${var.bootstrap}" }
+
+  depends_on = [aws_internet_gateway.main]
+}
+
+resource "aws_eip_association" "k3s" {
+  instance_id   = aws_instance.k3s.id
+  allocation_id = aws_eip.k3s.id
+}
+
 resource "aws_instance" "k3s" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
@@ -23,9 +46,15 @@ resource "aws_instance" "k3s" {
 
   user_data = var.bootstrap == "openchoreo" ? templatefile("${path.module}/user-data-openchoreo.sh.tftpl", {
     k3s_version = var.k3s_version
+    public_ip   = aws_eip.k3s.public_ip
+    dns_suffix  = var.dns_suffix
     }) : templatefile("${path.module}/user-data.sh.tftpl", {
     config_repo    = var.config_repo
     argocd_version = var.argocd_version
+    public_ip      = aws_eip.k3s.public_ip
+    dns_suffix     = var.dns_suffix
+    acme_email     = local.tls_enabled ? var.acme_email : ""
+    acme_ca        = var.acme_staging ? "https://acme-staging-v02.api.letsencrypt.org/directory" : "https://acme-v02.api.letsencrypt.org/directory"
   })
   user_data_replace_on_change = true
 

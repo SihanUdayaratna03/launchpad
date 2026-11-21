@@ -1,0 +1,58 @@
+#!/bin/bash
+# Bring up a k3s node ready for OpenChoreo, and stop there.
+#
+# The OpenChoreo install itself is run by hand over SSH, following
+# https://openchoreo.dev/docs/getting-started/try-it-out/on-your-environment/
+# A multi-step install that has never run on this platform fails more usefully
+# in front of someone than it does inside cloud-init.
+set -euxo pipefail
+exec > >(tee /var/log/launchpad-bootstrap.log) 2>&1
+
+TOKEN=$(curl -s -X PUT http://169.254.169.254/latest/api/token \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/public-ipv4)
+
+# 8 GiB is exactly what OpenChoreo's own quick start asks for, with nothing to
+# spare. A swap file is no substitute for memory, but it turns a short spike
+# during the install into slowness rather than an OOM kill.
+fallocate -l 4G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+sysctl -w vm.swappiness=10
+
+# Traefik is disabled on purpose: OpenChoreo's gateway wants ports 80 and 443,
+# and k3s would otherwise have its own ingress controller holding them. The
+# Launchpad webhook is published on a NodePort instead.
+K3S_VERSION="${k3s_version}"
+if [ -n "$K3S_VERSION" ]; then
+  export INSTALL_K3S_VERSION="$K3S_VERSION"
+fi
+
+curl -sfL https://get.k3s.io | \
+  INSTALL_K3S_EXEC="server --tls-san $PUBLIC_IP --write-kubeconfig-mode 644 --disable traefik" sh -
+
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+until kubectl get nodes 2>/dev/null | grep -q " Ready"; do sleep 5; done
+
+# Helm, for the OpenChoreo charts.
+curl -sfL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+# Everything the install guide asks for, ready in the login shell.
+IP_DASHES=$(echo "$PUBLIC_IP" | tr . -)
+cat >> /home/ubuntu/.bashrc <<EOF
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+export PUBLIC_IP=$PUBLIC_IP
+export IP_DASHES=$IP_DASHES
+export CP_BASE_DOMAIN=openchoreo.$IP_DASHES.nip.io
+export DP_DOMAIN=apps.openchoreo.$IP_DASHES.nip.io
+EOF
+
+kubectl version
+kubectl get storageclass
+free -h
+echo "k3s is up, traefik is disabled, helm is installed."
+echo "OpenChoreo is installed by hand from here."
+echo "bootstrap complete"

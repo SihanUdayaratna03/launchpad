@@ -5,8 +5,7 @@ exec > >(tee /var/log/launchpad-bootstrap.log) 2>&1
 # The Elastic IP, allocated before this instance existed. Asking the instance
 # metadata would race its association and could return the launch address.
 PUBLIC_IP="${public_ip}"
-IP_DASHES=$(echo "$PUBLIC_IP" | tr . -)
-BASE_DOMAIN="$IP_DASHES.${dns_suffix}"
+BASE_DOMAIN="${base_domain}"
 
 %{ if acme_email != "" ~}
 # TLS. Traefik already terminates every preview, so it obtains the

@@ -20,7 +20,8 @@ exists because reviewing a diff is guesswork; clicking the thing is not.
 
 ## Contents
 
-- [Launchpad on OpenChoreo](#launchpad-on-openchoreo) — the Project-per-PR backend
+- [Launchpad on OpenChoreo](#launchpad-on-openchoreo) — installing it, deploying on it, and
+  the Project-per-PR backend
 - [On AWS, driven by a real pull request](#on-aws-driven-by-a-real-pull-request)
 - [What I learned from OpenChoreo](#what-i-learned-from-openchoreo)
 - [The Argo CD backend](#the-argo-cd-backend) — the default, and what runs the TLS install
@@ -41,14 +42,63 @@ Launchpad removes that cost, on a platform the team already runs.
 
 ## Launchpad on OpenChoreo
 
+<a href="https://openchoreo.dev"><img src="docs/openchoreo-logo.png" alt="OpenChoreo" height="42"></a>
+
 [OpenChoreo](https://openchoreo.dev) is the open-source internal developer platform from
 Choreo Labs (formerly WSO2), a CNCF Sandbox project. It models software as **Components**
 inside **Projects**, promoted through fixed **Environments** on a registered data plane.
 
-What it does not model, as it ships, is the short-lived environment: one per pull request,
-created on open and destroyed on close. There is an open issue asking for exactly that
-([openchoreo#4345](https://github.com/openchoreo/openchoreo/issues/4345)). This backend is
-one answer to it, built on OpenChoreo's own objects rather than around them.
+I installed it (v1.3.3, control plane and data plane), deployed this project's demo workload
+on it, read how it turns two objects into a running service, and then taught Launchpad's
+controller to use it as a deployment engine. All three steps are below, in that order.
+
+### 1. Installing it
+
+**OpenChoreo v1.3.3 on a local k3d cluster**, control plane and data plane, following the
+official [Run Locally on K3d](https://openchoreo.dev/docs/getting-started/try-it-out/on-k3d-locally/)
+guide step by step. The install is not one chart; it is a platform:
+
+| Layer | What it is there for |
+|---|---|
+| Gateway API v1.5.1 | The CRDs behind every `HTTPRoute` OpenChoreo creates |
+| cert-manager v1.19.4 | Certificates between the control plane and the data plane |
+| External Secrets v2.0.1 + OpenBao | Where platform secrets live; a `ClusterSecretStore` joins them |
+| kgateway v2.3.11 | The gateway data path |
+| ThunderID v1.0.1 | Identity for the console |
+| openchoreo-control-plane 1.3.3 | The API: Projects, Components, Workloads, Environments |
+| openchoreo-data-plane 1.3.3 | Where workloads actually run, registered as a `ClusterDataPlane` |
+
+Docker Desktop on WSL2 with 10 GB of memory; the console then lists the data plane as
+**Connected**. Every command, and the version of every tool, is in
+[`docs/openchoreo.md`](docs/openchoreo.md) — written so someone else can repeat it.
+
+### 2. Deploying on it
+
+The demo image went on with one `kubectl apply` of two objects, a `Component` and a
+`Workload` ([`deploy/openchoreo/launchpad-demo.yaml`](deploy/openchoreo/launchpad-demo.yaml)).
+OpenChoreo turned them into a running service:
+
+![What OpenChoreo builds from two objects](docs/openchoreo-build.png)
+
+```text
+NAME             PROJECT   COMPONENTTYPE        AGE
+launchpad-demo   default   deployment/service   108s
+
+NAMESPACE                                 NAME                                READY   UP-TO-DATE   AVAILABLE
+dp-default-default-development-f8e58905   deployment.apps/launchpad-demo-...  1/1     1            1
+dp-default-default-development-f8e58905   service/launchpad-demo              ClusterIP   8080/TCP
+dp-default-default-development-f8e58905   httproute.../launchpad-demo-http-.. ["development-default.openchoreoapis.localhost"]
+```
+
+`curl` on that route returns `200 OK`. Reading what OpenChoreo had built — in particular
+*which* namespace it chose, and from what — is what decided the design of the backend below.
+
+### 3. Making Launchpad deploy through it
+
+What OpenChoreo does not model, as it ships, is the short-lived environment: one per pull
+request, created on open and destroyed on close. There is an open issue asking for exactly
+that ([openchoreo#4345](https://github.com/openchoreo/openchoreo/issues/4345)). This backend
+is one answer to it, built on OpenChoreo's own objects rather than around them.
 
 With `BACKEND=openchoreo` the controller stops editing an ApplicationSet. For each pull
 request it asks OpenChoreo for a **Project**, which owns its own namespace on the data plane:
@@ -145,6 +195,10 @@ the Project and the namespace underneath it.
 - I did not test promotion between environments, or the build and observability planes (both
   optional, neither installed). I make no claim about them
 
+OpenChoreo is an Apache-2.0 project of Choreo Labs; its name and logo are used here only to
+identify the platform this backend runs on. This repository is not affiliated with or
+endorsed by it.
+
 ---
 
 ## On AWS, driven by a real pull request
@@ -175,20 +229,6 @@ one. Merging took the Project and its namespace with it.
 
 *The preview for a pull request on this repository, reached over the public internet through
 OpenChoreo's gateway on the EC2 node. The commit is the one the pull request is on.*
-
-### Installing OpenChoreo
-
-I installed **OpenChoreo v1.3.3** on a local k3d cluster first — control plane and data
-plane, following the official guide step by step (Gateway API, cert-manager, External
-Secrets, kgateway, OpenBao, ThunderID, then the planes) — and deployed the demo image with
-one `kubectl apply` of a `Component` and a `Workload`
-([`deploy/openchoreo/launchpad-demo.yaml`](deploy/openchoreo/launchpad-demo.yaml)).
-OpenChoreo built a Deployment (1/1 available), a Service on 8080 and a Gateway API
-`HTTPRoute` from those two objects, in a namespace it created for the `development`
-environment.
-
-Every command, and the version of every tool, is in
-[`docs/openchoreo.md`](docs/openchoreo.md).
 
 ---
 

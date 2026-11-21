@@ -21,9 +21,38 @@ variable "public_key_path" {
 }
 
 variable "instance_type" {
-  description = "t3.small has 2 GiB RAM, enough for k3s + Argo CD. Use t3.medium once Prometheus and Grafana are added."
+  description = "t3.small has 2 GiB RAM, enough for k3s + Argo CD. Use t3.medium once Prometheus and Grafana are added. OpenChoreo needs 8 GiB, and m7i-flex.large is the largest free-tier-eligible type that has it."
   type        = string
   default     = "t3.medium"
+}
+
+variable "bootstrap" {
+  description = "What the node comes up as: argocd (k3s + Argo CD + the GitOps root app) or openchoreo (k3s with traefik disabled and helm, ready for the OpenChoreo install by hand)."
+  type        = string
+  default     = "argocd"
+
+  validation {
+    condition     = contains(["argocd", "openchoreo"], var.bootstrap)
+    error_message = "bootstrap must be argocd or openchoreo."
+  }
+}
+
+variable "root_volume_size" {
+  description = "Root disk in GiB. OpenChoreo pulls a lot of images, so give it 40."
+  type        = number
+  default     = 20
+}
+
+variable "k3s_version" {
+  description = "k3s release to install, e.g. v1.34.1+k3s1. Empty installs the current stable. OpenChoreo needs Kubernetes 1.34 or later."
+  type        = string
+  default     = ""
+}
+
+variable "webhook_node_port" {
+  description = "NodePort the Launchpad webhook is published on in the openchoreo bootstrap, where traefik is not there to do it."
+  type        = number
+  default     = 30080
 }
 
 variable "config_repo" {

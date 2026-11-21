@@ -8,10 +8,9 @@
 set -euxo pipefail
 exec > >(tee /var/log/launchpad-bootstrap.log) 2>&1
 
-TOKEN=$(curl -s -X PUT http://169.254.169.254/latest/api/token \
-  -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
-PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
-  http://169.254.169.254/latest/meta-data/public-ipv4)
+# The Elastic IP, allocated before this instance existed. Asking the instance
+# metadata would race its association and could return the launch address.
+PUBLIC_IP="${public_ip}"
 
 # 8 GiB is exactly what OpenChoreo's own quick start asks for, with nothing to
 # spare. A swap file is no substitute for memory, but it turns a short spike
@@ -46,8 +45,8 @@ cat >> /home/ubuntu/.bashrc <<EOF
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 export PUBLIC_IP=$PUBLIC_IP
 export IP_DASHES=$IP_DASHES
-export CP_BASE_DOMAIN=openchoreo.$IP_DASHES.nip.io
-export DP_DOMAIN=apps.openchoreo.$IP_DASHES.nip.io
+export CP_BASE_DOMAIN=openchoreo.$IP_DASHES.${dns_suffix}
+export DP_DOMAIN=apps.openchoreo.$IP_DASHES.${dns_suffix}
 EOF
 
 kubectl version

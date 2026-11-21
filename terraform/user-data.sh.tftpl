@@ -2,11 +2,52 @@
 set -euxo pipefail
 exec > >(tee /var/log/launchpad-bootstrap.log) 2>&1
 
-TOKEN=$(curl -s -X PUT http://169.254.169.254/latest/api/token \
-  -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
-PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
-  http://169.254.169.254/latest/meta-data/public-ipv4)
+# The Elastic IP, allocated before this instance existed. Asking the instance
+# metadata would race its association and could return the launch address.
+PUBLIC_IP="${public_ip}"
+IP_DASHES=$(echo "$PUBLIC_IP" | tr . -)
+BASE_DOMAIN="$IP_DASHES.${dns_suffix}"
 
+%{ if acme_email != "" ~}
+# TLS. Traefik already terminates every preview, so it obtains the
+# certificates too, over the HTTP-01 challenge on port 80, instead of running
+# a second controller beside it. This has to be in place before k3s starts:
+# k3s applies whatever is in its manifests directory when it comes up.
+#
+# The certificates live on the node, not in the pod, so a restart of Traefik
+# does not spend a fresh certificate per preview against Let's Encrypt's
+# limits. Traefik runs as uid 65532.
+mkdir -p /var/lib/launchpad-acme /var/lib/rancher/k3s/server/manifests
+chown 65532:65532 /var/lib/launchpad-acme
+chmod 700 /var/lib/launchpad-acme
+
+cat > /var/lib/rancher/k3s/server/manifests/traefik-config.yaml <<'TRAEFIK'
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    deployment:
+      additionalVolumes:
+        - name: acme
+          hostPath:
+            path: /var/lib/launchpad-acme
+            type: Directory
+    additionalVolumeMounts:
+      - name: acme
+        mountPath: /acme
+    additionalArguments:
+      - "--certificatesresolvers.le.acme.email=${acme_email}"
+      - "--certificatesresolvers.le.acme.storage=/acme/acme.json"
+      - "--certificatesresolvers.le.acme.caserver=${acme_ca}"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+TRAEFIK
+
+%{ endif ~}
 curl -sfL https://get.k3s.io | \
   INSTALL_K3S_EXEC="server --tls-san $PUBLIC_IP --write-kubeconfig-mode 644" sh -
 
@@ -19,9 +60,44 @@ kubectl apply --server-side -n argocd \
   -f https://raw.githubusercontent.com/argoproj/argo-cd/${argocd_version}/manifests/install.yaml
 kubectl -n argocd rollout status deploy/argocd-server --timeout=300s
 
+# The controller reads both keys, so previews get their hostnames and, when a
+# resolver is named, an https URL and a certificate.
+TLS_ARGS=""
+%{ if acme_email != "" ~}
+TLS_ARGS="--from-literal=tls-resolver=le"
+%{ endif ~}
 kubectl -n argocd create configmap launchpad-env \
-  --from-literal=base-domain="$(echo "$PUBLIC_IP" | tr . -).nip.io"
+  --from-literal=base-domain="$BASE_DOMAIN" $TLS_ARGS
 
+%{ if acme_email != "" ~}
+# GitHub needs a name to verify a certificate against, so the webhook gets its
+# own host. The chart's host-less Ingress stays, and answers on the bare IP.
+cat <<WEBHOOK | kubectl apply -f -
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: launchpad-webhook-tls
+  namespace: argocd
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: le
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: webhook.$BASE_DOMAIN
+      http:
+        paths:
+          - path: /webhook
+            pathType: Exact
+            backend:
+              service:
+                name: launchpad-controller
+                port:
+                  number: 8090
+WEBHOOK
+
+%{ endif ~}
 kubectl apply -f https://raw.githubusercontent.com/${config_repo}/main/bootstrap/root-app.yaml
 
 echo "bootstrap complete"
